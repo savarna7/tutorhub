@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import pool from './db/pool.js';
 import bookingRoutes from './routes/bookingRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
@@ -10,6 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/auth', authRoutes);
 
 // First API endpoint
 app.get('/api/health', (req, res) => {

@@ -1,13 +1,24 @@
 
 import express from 'express';
 import pool from '../db/pool.js';
+import authenticateToken from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // GET all bookings for a particular student
-router.get('/student/:studentId', async (req, res) => {
+router.get('/student/:studentId', authenticateToken, async (req, res) => {
     try {
         const { studentId } = req.params;
+
+        if (
+            req.user.role !== 'student' ||
+            req.user.id !== studentId
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: 'You are not authorized to access these bookings.'
+            });
+        }
 
         const query = `
             SELECT
@@ -50,9 +61,19 @@ router.get('/student/:studentId', async (req, res) => {
 
 
 // GET all bookings for a particular tutor
-router.get('/tutor/:tutorId', async (req, res) => {
+router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
     try {
         const { tutorId } = req.params;
+
+        if (
+            req.user.role !== 'tutor' ||
+            req.user.id !== tutorId
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: 'You are not authorized to access these bookings.'
+            });
+        }
 
         const query = `
             SELECT
@@ -95,15 +116,34 @@ router.get('/tutor/:tutorId', async (req, res) => {
 
 
 // POST a new booking
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
     try {
+        if (
+            !req.body ||
+            typeof req.body !== 'object' ||
+            Array.isArray(req.body)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Request body must be a valid JSON object.'
+            });
+        }
+
+        if (req.user.role !== 'student') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only students can create bookings.'
+            });
+        }
+
         const {
-            studentId,
             tutorId,
             subjectId,
             sessionStart,
             durationMinutes
         } = req.body;
+
+        const studentId = req.user.id;
 
         // 1. Validate required fields
         if (
@@ -137,8 +177,9 @@ router.post('/', async (req, res) => {
         const parsedStart = Date.parse(sessionStart);
 
         if (
+            typeof sessionStart !== 'string' ||
             Number.isNaN(parsedStart) ||
-            !/([zZ]|[+-]\d{2}:\d{2})$/.test(sessionStart)
+            !/(Z|[+-]\d{2}:\d{2})$/i.test(sessionStart)
         ) {
             return res.status(400).json({
                 success: false,
