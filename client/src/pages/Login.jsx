@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { loginUser } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 function Login() {
+    const { login, user, isAuthenticated } = useAuth();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -30,6 +32,7 @@ function Login() {
 
         try {
             const data = await loginUser(formData);
+            login(data.user, data.token);
 
             console.log('Login response:', data);
 
@@ -44,7 +47,12 @@ function Login() {
     return (
         <div>
             <h1>Login to TutorHub</h1>
-
+            {isAuthenticated && (
+                <div>
+                    <h2>Welcome, {user.fullName}!</h2>
+                    <p>Role: {user.role}</p>
+                </div>
+            )}
             <form onSubmit={handleSubmit}>
                 <div>
                     <label htmlFor="email">Email</label>
