@@ -10,13 +10,24 @@ router.get('/student/:studentId', authenticateToken, async (req, res) => {
     try {
         const { studentId } = req.params;
 
-        if (
-            req.user.role !== 'student' ||
-            req.user.id !== studentId
-        ) {
+        // A user can only access their own student bookings
+        if (String(req.user.id) !== String(studentId)) {
             return res.status(403).json({
                 success: false,
                 message: 'You are not authorized to access these bookings.'
+            });
+        }
+
+        // Verify that the logged-in user has a student profile
+        const profile = await pool.query(
+            'SELECT 1 FROM students WHERE user_id = $1',
+            [studentId]
+        );
+
+        if (profile.rowCount === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'A student profile is required to access these bookings.'
             });
         }
 
@@ -65,13 +76,24 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
     try {
         const { tutorId } = req.params;
 
-        if (
-            req.user.role !== 'tutor' ||
-            req.user.id !== tutorId
-        ) {
+        // A user can only access their own tutor bookings
+        if (String(req.user.id) !== String(tutorId)) {
             return res.status(403).json({
                 success: false,
                 message: 'You are not authorized to access these bookings.'
+            });
+        }
+
+        // Verify that the logged-in user has a tutor profile
+        const profile = await pool.query(
+            'SELECT 1 FROM tutors WHERE user_id = $1',
+            [tutorId]
+        );
+
+        if (profile.rowCount === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'A tutor profile is required to access these bookings.'
             });
         }
 
@@ -115,6 +137,75 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
 });
 
 
+// PATCH the status of a booking (tutor only)
+router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { status } = req.body || {};
+
+        // Validate booking ID
+        if (
+            !/^[1-9]\d*$/.test(bookingId) ||
+            !Number.isSafeInteger(Number(bookingId))
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid booking ID.'
+            });
+        }
+
+        // Only these status changes are allowed
+        if (!['confirmed', 'cancelled'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Status must be confirmed or cancelled.'
+            });
+        }
+
+        // Only the tutor who owns the booking can update it.
+        // Only pending bookings can be updated.
+        const query = `
+            UPDATE bookings
+            SET
+                status = $1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+              AND tutor_id = $3
+              AND status = 'pending'
+            RETURNING id AS booking_id, status;
+        `;
+
+        const result = await pool.query(query, [
+            status,
+            Number(bookingId),
+            req.user.id
+        ]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Booking not found or it is no longer pending.'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Booking ${status} successfully.`,
+            booking: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('Error updating booking status:', error.message);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update booking status.'
+        });
+    }
+});
+
+
+
 // POST a new booking
 router.post('/', authenticateToken, async (req, res) => {
     try {
@@ -129,13 +220,6 @@ router.post('/', authenticateToken, async (req, res) => {
             });
         }
 
-        if (req.user.role !== 'student') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only students can create bookings.'
-            });
-        }
-
         const {
             tutorId,
             subjectId,
@@ -145,9 +229,21 @@ router.post('/', authenticateToken, async (req, res) => {
 
         const studentId = req.user.id;
 
+        // Verify that the logged-in user has a student profile
+        const profile = await pool.query(
+            'SELECT 1 FROM students WHERE user_id = $1',
+            [studentId]
+        );
+
+        if (profile.rowCount === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only users with a student profile can create bookings.'
+            });
+        }
+
         // 1. Validate required fields
         if (
-            !studentId ||
             !tutorId ||
             !subjectId ||
             !sessionStart ||
@@ -228,11 +324,11 @@ router.post('/', authenticateToken, async (req, res) => {
 
         const result = await pool.query(query, values);
 
-        // 5. Check whether a matching student/tutor/subject exists
+        // 5. Check whether a matching tutor-subject combination exists
         if (result.rowCount === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Student profile or tutor-subject combination not found.'
+                message: 'Tutor-subject combination not found.'
             });
         }
 

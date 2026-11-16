@@ -1,17 +1,28 @@
-
 import express from 'express';
 import cors from 'cors';
 import pool from './db/pool.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import cookieParser from 'cookie-parser';
+import tutorRoutes from './routes/tutorRoutes.js';
+import profileRoutes from './routes/profileRoutes.js';
 
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
+
 app.use(express.json());
+app.use(cookieParser());
+
+// Routes
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/tutors', tutorRoutes);
+app.use('/api/profiles', profileRoutes);
 
 // First API endpoint
 app.get('/api/health', (req, res) => {

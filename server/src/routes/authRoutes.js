@@ -1,15 +1,22 @@
 
 import express from 'express';
 import bcrypt from 'bcrypt';
-import pool from '../db/pool.js';
 import jwt from 'jsonwebtoken';
+import pool from '../db/pool.js';
+import authenticateToken from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+const getCookieOptions = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 1000,
+    path: '/'
+});
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-    // 1. Validate request body
     if (
         !req.body ||
         typeof req.body !== 'object' ||
@@ -34,7 +41,7 @@ router.post('/register', async (req, res) => {
         bio
     } = req.body;
 
-    // 2. Validate name
+    // Validate name
     if (
         typeof fullName !== 'string' ||
         !fullName.trim() ||
@@ -46,7 +53,7 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    // 3. Validate email
+    // Validate email
     if (typeof email !== 'string' || !email.trim()) {
         return res.status(400).json({
             success: false,
@@ -64,7 +71,7 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    // 4. Validate password
+    // Validate password
     if (
         typeof password !== 'string' ||
         password.length < 8 ||
@@ -76,19 +83,24 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    // 5. Validate role
-    if (!['student', 'tutor'].includes(role)) {
+    // Support student, tutor, or both
+    const validRoles = ['student', 'tutor', 'both'];
+
+    if (!validRoles.includes(role)) {
         return res.status(400).json({
             success: false,
-            message: 'Role must be either student or tutor.'
+            message: 'Role must be student, tutor, or both.'
         });
     }
 
-    // 6. Validate tutor-specific information
+    const hasStudentProfile = role === 'student' || role === 'both';
+    const hasTutorProfile = role === 'tutor' || role === 'both';
+
     let validatedHourlyRate;
     let validatedExperienceYears = 0;
 
-    if (role === 'tutor') {
+    // Validate tutor information whenever a tutor profile is requested
+    if (hasTutorProfile) {
         if (
             hourlyRate === undefined ||
             hourlyRate === null ||
@@ -126,39 +138,38 @@ router.post('/register', async (req, res) => {
     let client;
 
     try {
-        // 7. Connect to database
         client = await pool.connect();
 
-        // 8. Hash password
         const passwordHash = await bcrypt.hash(password, 12);
 
-        // 9. Start transaction
         await client.query('BEGIN');
 
-        // 10. Insert user
-        const userQuery = `
-            INSERT INTO users (full_name, email, password_hash)
-            VALUES ($1, $2, $3)
-            RETURNING id, full_name, email, created_at;
-        `;
-
-        const userResult = await client.query(userQuery, [
-            fullName.trim(),
-            normalizedEmail,
-            passwordHash
-        ]);
+        // Create the main user account
+        const userResult = await client.query(
+            `INSERT INTO users (full_name, email, password_hash)
+             VALUES ($1, $2, $3)
+             RETURNING id, full_name, email`,
+            [fullName.trim(), normalizedEmail, passwordHash]
+        );
 
         const user = userResult.rows[0];
 
-        // 11. Create student or tutor profile
-        if (role === 'student') {
+        // Create student profile if requested
+        if (hasStudentProfile) {
             await client.query(
                 `INSERT INTO students
                  (user_id, education_level, learning_goals)
                  VALUES ($1, $2, $3)`,
-                [user.id, educationLevel || null, learningGoals || null]
+                [
+                    user.id,
+                    educationLevel || null,
+                    learningGoals || null
+                ]
             );
-        } else {
+        }
+
+        // Create tutor profile if requested
+        if (hasTutorProfile) {
             await client.query(
                 `INSERT INTO tutors
                  (user_id, qualification, experience_years, hourly_rate, bio)
@@ -173,8 +184,12 @@ router.post('/register', async (req, res) => {
             );
         }
 
-        // 12. Commit transaction
         await client.query('COMMIT');
+
+        const roles = [];
+
+        if (hasStudentProfile) roles.push('student');
+        if (hasTutorProfile) roles.push('tutor');
 
         return res.status(201).json({
             success: true,
@@ -183,12 +198,11 @@ router.post('/register', async (req, res) => {
                 id: user.id,
                 fullName: user.full_name,
                 email: user.email,
-                role
+                roles
             }
         });
 
     } catch (error) {
-        // Roll back only if a database transaction was started
         if (client) {
             try {
                 await client.query('ROLLBACK');
@@ -221,9 +235,8 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
-        // 1. Validate input
         if (
             typeof email !== 'string' ||
             typeof password !== 'string' ||
@@ -236,19 +249,26 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET is not configured.');
+        }
+
         const normalizedEmail = email.trim().toLowerCase();
 
-        // 2. Find the user and determine their role
+        // Retrieve every profile associated with this account
         const query = `
             SELECT
                 u.id,
                 u.full_name,
                 u.email,
                 u.password_hash,
-                CASE
-                    WHEN st.user_id IS NOT NULL THEN 'student'
-                    WHEN t.user_id IS NOT NULL THEN 'tutor'
-                END AS role
+                ARRAY_REMOVE(
+                    ARRAY[
+                        CASE WHEN st.user_id IS NOT NULL THEN 'student' END,
+                        CASE WHEN t.user_id IS NOT NULL THEN 'tutor' END
+                    ],
+                    NULL
+                ) AS roles
             FROM users u
             LEFT JOIN students st ON st.user_id = u.id
             LEFT JOIN tutors t ON t.user_id = u.id
@@ -257,8 +277,7 @@ router.post('/login', async (req, res) => {
 
         const result = await pool.query(query, [normalizedEmail]);
 
-        // 3. Check whether the account exists
-        if (result.rows.length === 0 || !result.rows[0].role) {
+        if (result.rows.length === 0 || result.rows[0].roles.length === 0) {
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password.'
@@ -267,7 +286,6 @@ router.post('/login', async (req, res) => {
 
         const user = result.rows[0];
 
-        // 4. Compare submitted password with stored hash
         const isPasswordCorrect = await bcrypt.compare(
             password,
             user.password_hash
@@ -280,16 +298,10 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // 5. Check JWT configuration
-        if (!process.env.JWT_SECRET) {
-            throw new Error('JWT_SECRET is not configured.');
-        }
-
-        // 6. Generate JWT
+        // JWT identifies the account, not a single role
         const token = jwt.sign(
             {
-                sub: String(user.id),
-                role: user.role
+                sub: String(user.id)
             },
             process.env.JWT_SECRET,
             {
@@ -297,16 +309,16 @@ router.post('/login', async (req, res) => {
             }
         );
 
-        // 7. Return token and user details
+        res.cookie('token', token, getCookieOptions());
+
         return res.status(200).json({
             success: true,
             message: 'Login successful!',
-            token,
             user: {
                 id: user.id,
                 fullName: user.full_name,
                 email: user.email,
-                role: user.role
+                roles: user.roles
             }
         });
 
@@ -320,5 +332,79 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// GET /api/auth/me
+// Restore the currently authenticated user's session
+router.get('/me', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                u.id,
+                u.full_name,
+                u.email,
+                ARRAY_REMOVE(
+                    ARRAY[
+                        CASE WHEN st.user_id IS NOT NULL THEN 'student' END,
+                        CASE WHEN t.user_id IS NOT NULL THEN 'tutor' END
+                    ],
+                    NULL
+                ) AS roles
+            FROM users u
+            LEFT JOIN students st ON st.user_id = u.id
+            LEFT JOIN tutors t ON t.user_id = u.id
+            WHERE u.id = $1;
+        `;
+
+        const result = await pool.query(query, [req.user.id]);
+
+        if (result.rows.length === 0) {
+            res.clearCookie('token', {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/'
+            });
+
+            return res.status(401).json({
+                success: false,
+                message: 'User account not found.'
+            });
+        }
+
+        const user = result.rows[0];
+
+        return res.status(200).json({
+            success: true,
+            user: {
+                id: user.id,
+                fullName: user.full_name,
+                email: user.email,
+                roles: user.roles
+            }
+        });
+
+    } catch (error) {
+        console.error('Session restoration error:', error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Could not restore session.'
+        });
+    }
+});
+
+// POST /api/auth/logout
+router.post('/logout', (req, res) => {
+    res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/'
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: 'Logged out successfully.'
+    });
+});
 
 export default router;
