@@ -1,17 +1,20 @@
+
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+
 import { loginUser } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
 
 function Login() {
-    const { login, user, isAuthenticated } = useAuth();
+    const navigate = useNavigate();
+    const { login, user, isAuthenticated, loading: authLoading } = useAuth();
+
     const [formData, setFormData] = useState({
         email: '',
         password: ''
     });
 
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleChange = (event) => {
@@ -27,16 +30,21 @@ function Login() {
         event.preventDefault();
 
         setError('');
-        setSuccess('');
         setLoading(true);
 
         try {
             const data = await loginUser(formData);
-            login(data.user, data.token);
 
-            console.log('Login response:', data);
+            // Save user details in React state.
+            // The JWT remains in the HttpOnly cookie.
+            login(data.user);
 
-            setSuccess('Login successful!');
+            // Student is the default dashboard for dual-role accounts.
+            if (data.user.roles.includes('student')) {
+                navigate('/student/dashboard');
+            } else if (data.user.roles.includes('tutor')) {
+                navigate('/tutor/dashboard');
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -44,52 +52,89 @@ function Login() {
         }
     };
 
+    if (authLoading) {
+        return (
+            <div className="auth-page">
+                <p>Checking your session...</p>
+            </div>
+        );
+    }
+
+    if (isAuthenticated) {
+        return (
+            <div className="auth-page">
+                <div className="auth-card">
+                    <h1>Welcome, {user.fullName}!</h1>
+                    <p>You are already logged in.</p>
+                    <Link className="auth-link" to="/">
+                        Go to Home
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div>
-            <h1>Login to TutorHub</h1>
-            {isAuthenticated && (
-                <div>
-                    <h2>Welcome, {user.fullName}!</h2>
-                    <p>Role: {user.role}</p>
-                </div>
-            )}
-            <form onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="email">Email</label>
-                    <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
-                    />
-                </div>
+        <main className="auth-page login-page">
+            <section className="auth-card">
+                <span className="auth-eyebrow">WELCOME BACK</span>
 
-                <div>
-                    <label htmlFor="password">Password</label>
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        required
-                    />
-                </div>
+                <h1>Login to TutorHub</h1>
 
-                <button type="submit" disabled={loading}>
-                    {loading ? 'Logging in...' : 'Login'}
-                </button>
-            </form>
+                <p className="auth-description">
+                    Continue your learning journey with the right tutor.
+                </p>
 
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            {success && <p style={{ color: 'green' }}>{success}</p>}
+                {error && (
+                    <p className="form-error" role="alert">
+                        {error}
+                    </p>
+                )}
 
-            <p>
-                Don't have an account? <Link to="/register">Sign up</Link>
-            </p>
-        </div>
+                <form className="auth-form" onSubmit={handleSubmit}>
+                    <div className="auth-field">
+                        <label htmlFor="email">Email Address</label>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            value={formData.email}
+                            onChange={handleChange}
+                            placeholder="Enter your email"
+                            autoComplete="email"
+                            required
+                        />
+                    </div>
+
+                    <div className="auth-field">
+                        <label htmlFor="password">Password</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            value={formData.password}
+                            onChange={handleChange}
+                            placeholder="Enter your password"
+                            autoComplete="current-password"
+                            required
+                        />
+                    </div>
+
+                    <button
+                        className="auth-submit-button"
+                        type="submit"
+                        disabled={loading}
+                    >
+                        {loading ? 'Logging in...' : 'Login to Account'}
+                    </button>
+                </form>
+
+                <p className="auth-footer">
+                    Don't have an account?{' '}
+                    <Link to="/register">Sign up</Link>
+                </p>
+            </section>
+        </main>
     );
 }
 

@@ -1,33 +1,72 @@
-import { createContext, useContext, useState } from 'react';
 
-// Create the authentication context
+import {
+    createContext,
+    useContext,
+    useEffect,
+    useState
+} from 'react';
+
+import {
+    getCurrentUser,
+    logoutUser
+} from '../services/authService';
+
 const AuthContext = createContext(null);
 
-// Provider component
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
-    const [token, setToken] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Save user information after successful login
-    const login = (userData, authToken) => {
+    // Restore the session when the application starts
+    useEffect(() => {
+        const restoreSession = async () => {
+            try {
+                const data = await getCurrentUser();
+                setUser(data.user);
+            } catch (error) {
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        restoreSession();
+    }, []);
+
+    // Update React state after successful login
+    const login = (userData) => {
         setUser(userData);
-        setToken(authToken);
     };
 
-    // Clear authentication information during logout
-    const logout = () => {
-        setUser(null);
-        setToken(null);
+    const refreshUser = async () => {
+        try {
+            const data = await getCurrentUser();
+            setUser(data.user);
+            return data.user;
+        } catch (error) {
+            setUser(null);
+            return null;
+        }
+    };
+
+    // Log out from the backend and clear frontend state
+    const logout = async () => {
+        try {
+            await logoutUser();
+        } finally {
+            setUser(null);
+        }
     };
 
     return (
         <AuthContext.Provider
             value={{
                 user,
-                token,
-                isAuthenticated: Boolean(user && token),
+                loading,
+                isAuthenticated: Boolean(user),
                 login,
-                logout
+                logout,
+                refreshUser
             }}
         >
             {children}
@@ -35,7 +74,6 @@ export function AuthProvider({ children }) {
     );
 }
 
-// Custom hook to access authentication context
 export function useAuth() {
     const context = useContext(AuthContext);
 
