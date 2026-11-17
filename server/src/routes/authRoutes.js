@@ -15,6 +15,7 @@ const getCookieOptions = () => ({
     path: '/'
 });
 
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
     if (
@@ -38,7 +39,8 @@ router.post('/register', async (req, res) => {
         qualification,
         experienceYears,
         hourlyRate,
-        bio
+        bio,
+        subjectIds
     } = req.body;
 
     // Validate name
@@ -83,7 +85,7 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    // Support student, tutor, or both
+    // Validate role
     const validRoles = ['student', 'tutor', 'both'];
 
     if (!validRoles.includes(role)) {
@@ -96,48 +98,149 @@ router.post('/register', async (req, res) => {
     const hasStudentProfile = role === 'student' || role === 'both';
     const hasTutorProfile = role === 'tutor' || role === 'both';
 
-    let validatedHourlyRate;
-    let validatedExperienceYears = 0;
+    // Validate student information
+    if (hasStudentProfile) {
+        if (
+            typeof educationLevel !== 'string' ||
+            !educationLevel.trim() ||
+            educationLevel.trim().length > 100
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid education level (maximum 100 characters).'
+            });
+        }
 
-    // Validate tutor information whenever a tutor profile is requested
+        if (
+            typeof learningGoals !== 'string' ||
+            !learningGoals.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please describe your learning goals.'
+            });
+        }
+    }
+
+    let validatedHourlyRate;
+    let validatedExperienceYears;
+    let validatedQualification;
+    let validatedBio;
+    let validatedSubjectIds = [];
+
+    // Validate tutor information
     if (hasTutorProfile) {
+        if (
+            typeof qualification !== 'string' ||
+            !qualification.trim() ||
+            qualification.trim().length > 150
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a valid qualification (maximum 150 characters).'
+            });
+        }
+
+        if (
+            typeof bio !== 'string' ||
+            !bio.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide your teaching bio.'
+            });
+        }
+
+        validatedQualification = qualification.trim();
+        validatedBio = bio.trim();
+
+        // Validate experience: 0 to 60 years, up to one decimal place
+        if (
+            experienceYears === undefined ||
+            experienceYears === null ||
+            experienceYears === '' ||
+            !Number.isFinite(Number(experienceYears)) ||
+            Number(experienceYears) < 0 ||
+            Number(experienceYears) > 60 ||
+            Math.abs(
+                Number(experienceYears) * 10 -
+                Math.round(Number(experienceYears) * 10)
+            ) > 0.000001
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Experience must be between 0 and 60 years, with at most one decimal place.'
+            });
+        }
+
+        validatedExperienceYears = Number(experienceYears);
+
+        // Validate hourly rate
         if (
             hourlyRate === undefined ||
             hourlyRate === null ||
             hourlyRate === '' ||
             !Number.isFinite(Number(hourlyRate)) ||
-            Number(hourlyRate) < 0
+            Number(hourlyRate) < 0 ||
+            Number(hourlyRate) > 99999999.99 ||
+            Math.abs(
+                Number(hourlyRate) * 100 -
+                Math.round(Number(hourlyRate) * 100)
+            ) > 0.000001
         ) {
             return res.status(400).json({
                 success: false,
-                message: 'A valid hourly rate is required for tutors.'
+                message: 'Please provide a valid hourly rate.'
             });
         }
 
         validatedHourlyRate = Number(hourlyRate);
 
+        // Validate selected subjects
         if (
-            experienceYears !== undefined &&
-            (
-                !Number.isSafeInteger(Number(experienceYears)) ||
-                Number(experienceYears) < 0 ||
-                Number(experienceYears) > 60
+            !Array.isArray(subjectIds) ||
+            subjectIds.length === 0 ||
+            !subjectIds.every(
+                (id) => Number.isSafeInteger(id) && id > 0
             )
         ) {
             return res.status(400).json({
                 success: false,
-                message: 'Experience must be a whole number between 0 and 60.'
+                message: 'Please select at least one valid subject.'
             });
         }
 
-        if (experienceYears !== undefined) {
-            validatedExperienceYears = Number(experienceYears);
+        // Reject duplicate subject IDs
+        validatedSubjectIds = [...new Set(subjectIds)];
+
+        if (validatedSubjectIds.length !== subjectIds.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'Duplicate subjects are not allowed.'
+            });
         }
     }
 
     let client;
 
     try {
+        // Confirm that all selected subjects exist
+        if (hasTutorProfile) {
+            const subjectsResult = await pool.query(
+                `SELECT id
+                 FROM subjects
+                 WHERE id = ANY($1::bigint[])`,
+                [validatedSubjectIds]
+            );
+
+            if (subjectsResult.rows.length !== validatedSubjectIds.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'One or more selected subjects are invalid.'
+                });
+            }
+        }
+
         client = await pool.connect();
 
         const passwordHash = await bcrypt.hash(password, 12);
@@ -154,7 +257,7 @@ router.post('/register', async (req, res) => {
 
         const user = userResult.rows[0];
 
-        // Create student profile if requested
+        // Create student profile
         if (hasStudentProfile) {
             await client.query(
                 `INSERT INTO students
@@ -162,13 +265,13 @@ router.post('/register', async (req, res) => {
                  VALUES ($1, $2, $3)`,
                 [
                     user.id,
-                    educationLevel || null,
-                    learningGoals || null
+                    educationLevel.trim(),
+                    learningGoals.trim()
                 ]
             );
         }
 
-        // Create tutor profile if requested
+        // Create tutor profile
         if (hasTutorProfile) {
             await client.query(
                 `INSERT INTO tutors
@@ -176,14 +279,23 @@ router.post('/register', async (req, res) => {
                  VALUES ($1, $2, $3, $4, $5)`,
                 [
                     user.id,
-                    qualification || null,
+                    validatedQualification,
                     validatedExperienceYears,
                     validatedHourlyRate,
-                    bio || null
+                    validatedBio
                 ]
+            );
+
+            // Assign all selected subjects to the tutor
+            await client.query(
+                `INSERT INTO tutor_subjects (tutor_id, subject_id)
+                 SELECT $1, selected.subject_id
+                 FROM UNNEST($2::bigint[]) AS selected(subject_id)`,
+                [user.id, validatedSubjectIds]
             );
         }
 
+        // Commit all registration records together
         await client.query('COMMIT');
 
         const roles = [];
@@ -231,6 +343,7 @@ router.post('/register', async (req, res) => {
         }
     }
 });
+
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {

@@ -24,3 +24,16 @@ export const getTutorById = async (tutorId) => {
 
     return data.tutor;
 };
+
+// Fetch all available subjects
+export const getSubjects = async () => {
+    const response = await fetch(`${API_URL}/subjects`);
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch subjects.');
+    }
+
+    return data.subjects;
+};

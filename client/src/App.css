@@ -2031,3 +2031,212 @@ button:disabled {
     margin-bottom: 22px;
   }
 }
+
+
+/* =========================================
+   13. TUTORHUB REGISTRATION FORM ENHANCEMENTS
+========================================= */
+
+/* Give the registration page enough room for both sections */
+.auth-page.register-page {
+    align-items: flex-start;
+    padding-top: 55px;
+    padding-bottom: 55px;
+}
+
+.auth-page.register-page > .register-card {
+    max-width: 620px;
+}
+
+/* Form spacing */
+.register-card .auth-form {
+    gap: 22px;
+}
+
+.register-card .auth-form > .auth-field {
+    gap: 9px;
+}
+
+/* Student and tutor information panels */
+.student-registration-fields,
+.tutor-registration-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 19px;
+    padding: 22px;
+    border-radius: 14px;
+}
+
+.student-registration-fields {
+    border: 1px solid #dce7f4;
+    background: #f7faff;
+}
+
+.tutor-registration-fields {
+    border: 1px solid #e0eac5;
+    background: #f9fbed;
+}
+
+/* Section headings */
+.student-registration-fields h2,
+.tutor-registration-fields h2 {
+    margin: 0 0 2px;
+    color: var(--navy);
+    font-size: 17px;
+    font-weight: 800;
+}
+
+/* Textareas */
+.register-card .auth-field textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 13px 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #ffffff;
+    color: var(--navy);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.register-card .auth-field textarea::placeholder {
+    color: #9aa3b1;
+}
+
+.register-card .auth-field textarea:focus {
+    border-color: #a6c54b;
+    box-shadow: 0 0 0 3px rgba(215, 243, 106, 0.25);
+}
+
+/* Subject selection container */
+.subject-selection {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 4px;
+}
+
+/* Individual subject cards */
+.subject-selection label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #dce4ce;
+    border-radius: 9px;
+    background: #ffffff;
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+    cursor: pointer;
+    transition:
+        border-color 0.2s ease,
+        background 0.2s ease,
+        transform 0.2s ease;
+}
+
+.subject-selection label:hover {
+    border-color: #a6c54b;
+    transform: translateY(-1px);
+}
+
+/* Checkbox appearance */
+.subject-selection input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    margin: 0;
+    accent-color: var(--green-dark);
+    cursor: pointer;
+}
+
+/* Selected subject cards */
+.subject-selection label:has(input:checked) {
+    border-color: var(--green-dark);
+    background: #f0f7d9;
+}
+
+/* Improve field labels */
+.student-registration-fields .auth-field > label,
+.tutor-registration-fields .auth-field > label {
+    font-size: 13px;
+}
+
+/* Mobile layout */
+@media (max-width: 480px) {
+    .auth-page.register-page {
+        padding: 28px 14px;
+    }
+
+    .auth-page.register-page > .register-card {
+        padding: 25px 18px;
+    }
+
+    .student-registration-fields,
+    .tutor-registration-fields {
+        padding: 17px;
+        gap: 16px;
+    }
+
+    .subject-selection {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+/* Tutor profile subject checkbox alignment */
+.profile-subject-selection {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.profile-subject-selection label {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #ffffff;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.profile-subject-selection input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    min-width: 17px;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+    accent-color: var(--green-dark);
+    cursor: pointer;
+}
+
+.profile-subject-selection label span {
+    display: block;
+    text-align: left;
+}
+
+.profile-subject-selection label:has(input:checked) {
+    border-color: var(--green-dark);
+    background: #f0f7d9;
+}
+
+@media (max-width: 480px) {
+    .profile-subject-selection {
+        grid-template-columns: 1fr;
+    }
+}
