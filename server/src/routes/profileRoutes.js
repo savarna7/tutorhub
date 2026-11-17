@@ -79,47 +79,115 @@ router.get('/me', authenticateToken, async (req, res) => {
 });
 
 
+
 // PUT /api/profiles/tutor
-// Update the logged-in user's tutor profile
+// Update tutor details and selected subjects
 router.put('/tutor', authenticateToken, async (req, res) => {
+    const {
+        qualification,
+        experienceYears,
+        hourlyRate,
+        bio,
+        subjectIds
+    } = req.body;
+
+    // Validate numeric fields
+    const experience = Number(experienceYears);
+    const rate = Number(hourlyRate);
+
+    if (
+        experienceYears === undefined ||
+        experienceYears === null ||
+        experienceYears === '' ||
+        hourlyRate === undefined ||
+        hourlyRate === null ||
+        hourlyRate === '' ||
+        !Number.isFinite(experience) ||
+        !Number.isFinite(rate) ||
+        experience < 0 ||
+        experience > 60 ||
+        Math.abs(experience * 10 - Math.round(experience * 10)) > 0.000001 ||
+        rate < 0 ||
+        rate > 99999999.99 ||
+        Math.abs(rate * 100 - Math.round(rate * 100)) > 0.000001
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: 'Please provide valid experience and hourly rate values.'
+        });
+    }
+
+    // Validate text fields
+    if (
+        (qualification != null && typeof qualification !== 'string') ||
+        (bio != null && typeof bio !== 'string') ||
+        (qualification && qualification.trim().length > 150)
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid qualification or bio.'
+        });
+    }
+
+    // Validate selected subjects
+    if (
+        !Array.isArray(subjectIds) ||
+        subjectIds.length === 0 ||
+        !subjectIds.every(
+            (id) => Number.isSafeInteger(id) && id > 0
+        ) ||
+        new Set(subjectIds).size !== subjectIds.length
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: 'Please select at least one valid subject.'
+        });
+    }
+
+    let client;
+
     try {
-        const {
-            qualification,
-            experienceYears,
-            hourlyRate,
-            bio
-        } = req.body;
+        client = await pool.connect();
 
-        // Validate numeric fields
-        const experience = Number(experienceYears);
-        const rate = Number(hourlyRate);
+        await client.query('BEGIN');
 
-        if (
-            experienceYears === undefined ||
-            hourlyRate === undefined ||
-            !Number.isFinite(experience) ||
-            !Number.isFinite(rate) ||
-            experience < 0 ||
-            rate < 0
-        ) {
-            return res.status(400).json({
+        // Check that the logged-in user has a tutor profile
+        const tutorResult = await client.query(
+            `SELECT user_id
+             FROM tutors
+             WHERE user_id = $1
+             FOR UPDATE;`,
+            [req.user.id]
+        );
+
+        if (tutorResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+
+            return res.status(404).json({
                 success: false,
-                message: 'Experience and hourly rate must be valid non-negative numbers.'
+                message: 'Tutor profile not found.'
             });
         }
 
-        if (
-            (qualification != null && typeof qualification !== 'string') ||
-            (bio != null && typeof bio !== 'string') ||
-            (qualification && qualification.length > 150)
-        ) {
+        // Verify that every selected subject exists
+        const subjectsResult = await client.query(
+            `SELECT id
+             FROM subjects
+             WHERE id = ANY($1::bigint[]);`,
+            [subjectIds]
+        );
+
+        if (subjectsResult.rows.length !== subjectIds.length) {
+            await client.query('ROLLBACK');
+
             return res.status(400).json({
                 success: false,
-                message: 'Invalid qualification or bio.'
+                message: 'One or more selected subjects are invalid.'
             });
         }
 
-        const result = await pool.query(
+        // Update tutor details
+        const updateResult = await client.query(
             `UPDATE tutors
              SET
                 qualification = $1,
@@ -136,36 +204,68 @@ router.put('/tutor', authenticateToken, async (req, res) => {
                 bio,
                 updated_at;`,
             [
-                qualification || null,
+                qualification?.trim() || null,
                 experience,
                 rate,
-                bio || null,
+                bio?.trim() || null,
                 req.user.id
             ]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Tutor profile not found.'
-            });
-        }
+        // Replace previous subject assignments
+        await client.query(
+            `DELETE FROM tutor_subjects
+             WHERE tutor_id = $1;`,
+            [req.user.id]
+        );
+
+        await client.query(
+            `INSERT INTO tutor_subjects (tutor_id, subject_id)
+             SELECT $1, selected.subject_id
+             FROM UNNEST($2::bigint[]) AS selected(subject_id);`,
+            [req.user.id, subjectIds]
+        );
+
+        // Fetch the updated subject list
+        const updatedSubjects = await client.query(
+            `SELECT s.id, s.name
+             FROM tutor_subjects ts
+             JOIN subjects s ON s.id = ts.subject_id
+             WHERE ts.tutor_id = $1
+             ORDER BY s.name;`,
+            [req.user.id]
+        );
+
+        await client.query('COMMIT');
 
         return res.status(200).json({
             success: true,
             message: 'Tutor profile updated successfully.',
-            tutor: result.rows[0]
+            tutor: {
+                ...updateResult.rows[0],
+                subjects: updatedSubjects.rows
+            }
         });
 
     } catch (error) {
+        if (client) {
+            await client.query('ROLLBACK').catch(() => { });
+        }
+
         console.error('Update tutor profile error:', error.message);
 
         return res.status(500).json({
             success: false,
             message: 'Failed to update tutor profile.'
         });
+
+    } finally {
+        if (client) {
+            client.release();
+        }
     }
 });
+
 
 
 // PUT /api/profiles/student
@@ -321,11 +421,13 @@ router.post('/request-email-change', authenticateToken, async (req, res) => {
         });
     }
 
-   const client = await pool.connect();
-let requestId;
-let verificationToken;
+    let client;
+    let requestId;
+    let verificationToken;
 
     try {
+        client = await pool.connect();
+
         await client.query('BEGIN');
 
         // Get the current email address
@@ -416,7 +518,9 @@ let verificationToken;
         await client.query('COMMIT');
 
     } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (client) {
+            await client.query('ROLLBACK').catch(() => { });
+        }
 
         console.error('Create email change request error:', error.message);
 
@@ -426,7 +530,9 @@ let verificationToken;
         });
 
     } finally {
-        client.release();
+        if (client) {
+            client.release();
+        }
     }
 
     // Send the verification email after saving the request
@@ -459,7 +565,7 @@ let verificationToken;
 });
 
 
-// GET /api/profiles/verify-email-change
+// POST /api/profiles/verify-email-change
 // Verify the token and update the user's email address
 router.post('/verify-email-change', async (req, res) => {
     const { token } = req.body;
@@ -478,9 +584,11 @@ router.post('/verify-email-change', async (req, res) => {
         .update(token)
         .digest('hex');
 
-    const client = await pool.connect();
+    let client;
 
     try {
+        client = await pool.connect();
+
         await client.query('BEGIN');
 
         // Find and lock the pending verification request
@@ -571,7 +679,9 @@ router.post('/verify-email-change', async (req, res) => {
         });
 
     } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (client) {
+            await client.query('ROLLBACK').catch(() => { });
+        }
 
         console.error('Verify email change error:', error.message);
 
@@ -588,7 +698,9 @@ router.post('/verify-email-change', async (req, res) => {
         });
 
     } finally {
-        client.release();
+        if (client) {
+            client.release();
+        }
     }
 });
 

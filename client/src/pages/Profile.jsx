@@ -1,6 +1,4 @@
-
 import { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import {
     getMyProfile,
     updateAccount,
@@ -8,11 +6,12 @@ import {
     updateTutorProfile,
     requestEmailChange
 } from '../services/profileService';
+import { getSubjects } from '../services/tutorService';
 
 function Profile() {
-    const { user } = useAuth();
-
     const [profile, setProfile] = useState(null);
+    const [availableSubjects, setAvailableSubjects] = useState([]);
+    const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -45,7 +44,16 @@ function Profile() {
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const data = await getMyProfile();
+                const [data, subjects] = await Promise.all([
+                    getMyProfile(),
+                    getSubjects()
+                ]);
+
+                setAvailableSubjects(subjects);
+
+                setSelectedSubjectIds(
+                    (data.subjects || []).map((subject) => Number(subject.id))
+                );
 
                 setProfile(data);
 
@@ -77,24 +85,34 @@ function Profile() {
     }, []);
 
     const handleAccountChange = (e) => {
-        setAccountForm({
-            ...accountForm,
+        setAccountForm((prev) => ({
+            ...prev,
             [e.target.name]: e.target.value
-        });
+        }));
     };
 
     const handleStudentChange = (e) => {
-        setStudentForm({
-            ...studentForm,
+        setStudentForm((prev) => ({
+            ...prev,
             [e.target.name]: e.target.value
-        });
+        }));
     };
 
     const handleTutorChange = (e) => {
-        setTutorForm({
-            ...tutorForm,
+        setTutorForm((prev) => ({
+            ...prev,
             [e.target.name]: e.target.value
-        });
+        }));
+    };
+
+    const handleSubjectChange = (e) => {
+        const subjectId = Number(e.target.value);
+
+        setSelectedSubjectIds((prev) =>
+            e.target.checked
+                ? [...prev, subjectId]
+                : prev.filter((id) => id !== subjectId)
+        );
     };
 
     const handleAccountSubmit = async (e) => {
@@ -131,7 +149,6 @@ function Profile() {
             const result = await requestEmailChange(emailForm.newEmail);
 
             setSuccess(result.message);
-            console.log('Email success message:', result.message);
             setEmailForm({
                 newEmail: ''
             });
@@ -176,7 +193,8 @@ function Profile() {
             const updated = await updateTutorProfile({
                 ...tutorForm,
                 experienceYears: Number(tutorForm.experienceYears),
-                hourlyRate: Number(tutorForm.hourlyRate)
+                hourlyRate: Number(tutorForm.hourlyRate),
+                subjectIds: selectedSubjectIds
             });
 
             setProfile((prev) => ({
@@ -184,7 +202,8 @@ function Profile() {
                 qualification: updated.qualification,
                 experience_years: updated.experience_years,
                 hourly_rate: updated.hourly_rate,
-                bio: updated.bio
+                bio: updated.bio,
+                subjects: updated.subjects
             }));
 
             setSuccess('Tutor profile updated successfully.');
@@ -262,13 +281,14 @@ function Profile() {
                         name="newEmail"
                         value={emailForm.newEmail}
                         onChange={(e) =>
-                            setEmailForm({
-                                ...emailForm,
+                            setEmailForm((prev) => ({
+                                ...prev,
                                 newEmail: e.target.value
-                            })
+                            }))
                         }
                         placeholder="Enter your new email address"
                         required
+                        maxLength="255"
                     />
 
                     <button type="submit" disabled={saving}>
@@ -332,7 +352,7 @@ function Profile() {
                             value={tutorForm.experienceYears}
                             onChange={handleTutorChange}
                             min="0"
-                            max="999.9"
+                            max="60"
                             step="0.1"
                             required
                         />
@@ -344,6 +364,7 @@ function Profile() {
                             value={tutorForm.hourlyRate}
                             onChange={handleTutorChange}
                             min="0"
+                            max="99999999.99"
                             step="0.01"
                             required
                         />
@@ -355,7 +376,24 @@ function Profile() {
                             onChange={handleTutorChange}
                             rows="4"
                         />
+                        <label>Subjects You Teach</label>
 
+                        <div className="profile-subject-selection">
+                            {availableSubjects.map((subject) => (
+                                <label key={subject.id}>
+                                    <input
+                                        type="checkbox"
+                                        value={subject.id}
+                                        checked={selectedSubjectIds.includes(
+                                            Number(subject.id)
+                                        )}
+                                        onChange={handleSubjectChange}
+                                    />
+
+                                    <span>{subject.name}</span>
+                                </label>
+                            ))}
+                        </div>
                         <button type="submit" disabled={saving}>
                             {saving ? 'Saving...' : 'Save Tutor Profile'}
                         </button>
