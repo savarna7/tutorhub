@@ -1,6 +1,6 @@
 # TutorHub — Project Progress & Handoff
 
-**Last updated:** 16 November 2026
+**Last updated:** 17 November 2026
 
 ## 1. Project Overview
 
@@ -283,12 +283,15 @@ Implemented endpoints:
 - `POST /api/auth/logout`
 
 Registration:
-- Validates full name, email and password.
-- Normalizes email to lowercase.
-- Supports student, tutor and both roles.
+- Supports Student, Tutor and Both roles.
+- Collects role-specific information during registration.
+- Student fields: education level and learning goals.
+- Tutor fields: qualification, experience, subjects, hourly rate and bio.
+- Validates selected subject IDs against the subjects catalog.
+- Creates the user and associated student/tutor profiles in a PostgreSQL transaction.
+- Saves tutor subject assignments in `tutor_subjects` within the same transaction.
 - Hashes passwords using bcrypt with cost factor 12.
-- Uses PostgreSQL transactions.
-- Creates the requested profile records.
+- Prevents duplicate email registration.
 
 Login:
 - Retrieves the account and associated roles.
@@ -356,6 +359,15 @@ The frontend consumes the tutor data through its tutor service.
 - Requesting an email change.
 - Verifying an email change.
 
+Additional tutor profile functionality:
+- Retrieves available subjects through `GET /api/tutors/subjects`.
+- Retrieves the authenticated user's existing subject assignments through `GET /api/profiles/me`.
+- Updates tutor details and subject assignments through `PUT /api/profiles/tutor`.
+- Validates selected subject IDs.
+- Replaces previous subject assignments with the newly selected subjects.
+- Uses a PostgreSQL transaction so tutor details and subject assignments are updated together.
+- Returns the updated tutor profile, including selected subjects.
+
 ### Email service
 
 `server/src/services/emailService.js` uses Resend to send verification emails.
@@ -419,8 +431,15 @@ Login:
 
 Registration:
 - Supports Student, Tutor and Both.
-- Collects hourly rate and experience for tutor and dual-role accounts.
+- Dynamically displays role-specific registration fields.
+- Collects student education level and learning goals.
+- Collects tutor qualification, experience, subjects, hourly rate and bio.
+- Fetches available subjects from the backend.
+- Supports selecting multiple teaching subjects.
+- Sends role-specific information to the registration API.
 - Displays success and error messages.
+
+Registration has been manually tested successfully for all three account types.
 
 ### Tutor discovery
 
@@ -464,9 +483,17 @@ The user previously tested both dashboards, status actions, filters and status p
 - Shared account details such as full name and phone number.
 - Student education level and learning goals.
 - Tutor qualification, experience, hourly rate and bio.
+- Tutor teaching subjects through a multi-select checkbox interface.
 - Email-change requests through verification.
 
-Sections are displayed according to the user's roles.
+Additional functionality:
+- Loads available subjects from the tutor subjects API.
+- Preselects subjects already assigned to the tutor.
+- Allows tutors to add and remove subjects.
+- Saves updated subject assignments to PostgreSQL.
+- Displays profile sections according to the user's roles.
+
+The tutor subject editing workflow was tested using a Tutor-only account, including persistence after refreshing the page. Both-role profile editing still requires verification.
 
 ### Email verification page
 
@@ -541,6 +568,15 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Updated email displayed in profile.
 - Latest responsive UI checks.
 - Latest production build.
+- [x] Conditional Student registration.
+- [x] Conditional Tutor registration.
+- [x] Conditional Both-role registration.
+- [x] Tutor qualification, experience, hourly rate and bio saved during registration.
+- [x] Multiple tutor subjects saved during registration.
+- [x] Tutor profile editing.
+- [x] Adding and removing teaching subjects.
+- [x] Updated subject assignments persist after refreshing the Profile page.
+- [x] Tutor subject checkbox alignment and styling.
 
 ### Verified through backend testing
 
@@ -555,6 +591,14 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Booking creation returns HTTP 201.
 - Duplicate overlapping booking returns HTTP 409.
 - Database-level overlap prevention works.
+- [x] Available subjects endpoint returns the subjects catalog.
+- [x] Tutor listing returns tutors with their assigned subjects.
+- [x] Registration creates the appropriate role-specific profile records.
+- [x] Registration saves tutor subject assignments.
+- [x] Tutor profile update endpoint validates and saves subject assignments.
+- [x] Tutor profile updates and subject assignments are handled transactionally.
+- [x] `node --check src/routes/authRoutes.js` passed.
+- [x] `node --check src/routes/profileRoutes.js` passed.
 
 ### Implemented; further end-to-end review recommended
 
@@ -592,6 +636,13 @@ Do not describe untested functionality as fully verified.
 - [x] Tutor search, filtering and sorting.
 - [x] Responsive UI improvements.
 - [x] Latest frontend production build.
+- [x] Conditional registration for Student, Tutor and Both roles.
+- [x] Role-specific registration fields.
+- [x] Tutor subject selection during registration.
+- [x] Transactional registration of user, role profiles and subject assignments.
+- [x] Tutor subject management in the Profile page.
+- [x] Transactional tutor profile and subject updates.
+- [x] Subject selection persistence after page refresh.
 
 
 ### Verification completed — November 16, 2026
@@ -652,6 +703,18 @@ These checks do not replace end-to-end testing of every marketplace workflow.
 - [ ] Test the deployed application.
 - [ ] Publish truthful LinkedIn and X updates at meaningful milestones.
 
+### Additional profile verification
+
+- [ ] Test profile editing using a Both-role account.
+- [ ] Verify student and tutor profile updates independently for a dual-role account.
+- [ ] Test invalid subject IDs and duplicate subject selections.
+- [ ] Test tutor profile updates with invalid numeric values.
+- [ ] Verify rollback behavior when a tutor profile update fails.
+
+### Additional quality checks
+
+- [ ] Verify registration and profile-editing workflows after a fresh login.
+
 ## 13. Development Preferences and Handoff Instructions
 
 When continuing TutorHub development:
@@ -701,3 +764,25 @@ When continuing TutorHub development:
 - Do not use destructive Git commands.
 - Do not stage or commit without explicit approval.
 - Keep actual environment files and credentials out of source control.
+
+### Completed on November 17, 2026
+
+- Implemented conditional registration for Student, Tutor and Both roles.
+- Added role-specific registration fields.
+- Added tutor subject selection during registration.
+- Verified all three registration scenarios.
+- Verified tutor details and subject assignments in PostgreSQL.
+- Implemented tutor profile and subject updates.
+- Added subject selection controls to the Profile page.
+- Verified tutor subject changes persist after refreshing.
+- Fixed checkbox and subject-name alignment.
+- Passed JavaScript syntax checks for `authRoutes.js` and `profileRoutes.js`.
+
+### Remaining verification
+
+- Test profile editing with a Both-role account.
+- Test invalid input and transaction rollback scenarios.
+- Test profile editing with a Both-role account.
+- Test invalid input and transaction rollback scenarios.
+- Verify registration and profile editing after a fresh login.
+- Review all changes before organizing Git commits.
