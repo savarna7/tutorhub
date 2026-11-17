@@ -6,6 +6,23 @@ The project is built with **React, Node.js, Express.js, and PostgreSQL**, with a
 
 ---
 
+## Screenshots
+
+### Homepage
+![TutorHub Homepage](screenshots/homepage.png)
+
+### Tutor Discovery
+![Tutor Discovery Page](screenshots/tutor-discovery.png)
+
+### Student Dashboard
+![Student Dashboard](screenshots/student-dashboard.png)
+
+### Tutor Dashboard
+![Tutor Dashboard](screenshots/tutor-dashboard.png)
+
+### Profile Management
+![Profile Management](screenshots/profile.png)
+
 ## Features
 
 ### Authentication and User Management
