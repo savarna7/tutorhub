@@ -16,7 +16,7 @@ The project is being developed to demonstrate practical full-stack development s
 - **Authentication:** bcrypt, JWT, HttpOnly cookies
 - **Database driver:** pg
 - **Email service:** Resend
-- **Testing:** Vitest, Supertest
+- **Testing:** Vitest, Supertest, React Testing Library, jest-dom, user-event
 - **Other dependencies:** CORS, cookie-parser, dotenv
 - **Version control:** Git and GitHub
 
@@ -47,6 +47,7 @@ Current branch: `main`
 | `d2fc0d3` | Implement role-specific registration |
 | `bcd68e8` | Add tutor profile and subject management |
 | `7be9786` | Update TutorHub project documentation |
+| `72e44a4` | Add automated backend tests |
 
 Other earlier commits covered the Express backend, PostgreSQL connection, booking APIs, authentication, frontend integration, and project documentation.
 
@@ -54,20 +55,28 @@ GitHub repository: `https://github.com/savarna7/tutorhub`
 
 ### Current working-tree status
 
-The latest confirmed clean Git state was after commit `7be9786`.
+The latest confirmed published commit is `72e44a4`, which added the automated backend test suite.
 
-Since then, automated backend testing has been added. The following changes are currently uncommitted:
+The following frontend changes are currently uncommitted:
 
-- Modified `server/package.json`.
-- Modified `server/package-lock.json`.
-- New `server/db/schema.sql`.
-- New `server/tests/app.test.js`.
-- New `server/tests/setup.js`.
-- New `server/vitest.config.js`.
+- Modified `client/package.json`.
+- Modified `client/package-lock.json`.
+- Modified `client/vite.config.js`.
+- Modified frontend component and page imports following the AuthContext refactor.
+- Deleted the old `client/src/context/AuthContext.jsx`.
+- Added `client/src/context/AuthContext.js`.
+- Added `client/src/context/AuthProvider.jsx`.
+- Added `client/src/context/useAuth.js`.
+- Added `client/src/App.test.jsx`.
+- Added `client/src/components/ProtectedRoute.test.jsx`.
+- Added `client/src/pages/Login.test.jsx`.
+- Added `client/src/pages/Register.test.jsx`.
+- Added `client/src/test/setup.js`.
+- Updated `PROJECT_PROGRESS.md` to document frontend testing and the dependency security fix.
 
-The local `server/.env.test` file is ignored by Git and must remain untracked.
+The frontend testing infrastructure and tests have been implemented and verified locally.
 
-**No staging, committing, or pushing has been performed for these latest automated-testing changes.**
+**No staging, committing, or pushing has been performed for these frontend changes.**
 
 Before committing:
 
@@ -90,30 +99,40 @@ tutorhub/
 ├── README.md
 ├── PROJECT_PROGRESS.md
 ├── client/
-│   └── src/
-│       ├── App.jsx
-│       ├── App.css
-│       ├── index.css
-│       ├── main.jsx
-│       ├── components/
-│       │   ├── Navbar.jsx
-│       │   └── ProtectedRoute.jsx
-│       ├── context/
-│       │   └── AuthContext.jsx
-│       ├── pages/
-│       │   ├── Login.jsx
-│       │   ├── Register.jsx
-│       │   ├── Tutors.jsx
-│       │   ├── TutorProfile.jsx
-│       │   ├── StudentDashboard.jsx
-│       │   ├── TutorDashboard.jsx
-│       │   ├── Profile.jsx
-│       │   └── VerifyEmailChange.jsx
-│       └── services/
-│           ├── authService.js
-│           ├── bookingService.js
-│           ├── profileService.js
-│           └── tutorService.js
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── App.test.jsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   ├── main.jsx
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   └── ProtectedRoute.test.jsx
+│   │   ├── context/
+│   │   │   ├── AuthContext.js
+│   │   │   ├── AuthProvider.jsx
+│   │   │   └── useAuth.js
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Login.test.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Register.test.jsx
+│   │   │   ├── Tutors.jsx
+│   │   │   ├── TutorProfile.jsx
+│   │   │   ├── StudentDashboard.jsx
+│   │   │   ├── TutorDashboard.jsx
+│   │   │   ├── Profile.jsx
+│   │   │   └── VerifyEmailChange.jsx
+│   │   ├── services/
+│   │   │   ├── authService.js
+│   │   │   ├── bookingService.js
+│   │   │   ├── profileService.js
+│   │   │   └── tutorService.js
+│   │   └── test/
+│   │       └── setup.js
+│   ├── vite.config.js
+│   └── package.json
 └── server/
     ├── db/
     │   └── schema.sql
@@ -447,12 +466,20 @@ Protected routes use `ProtectedRoute.jsx` and role checks.
 
 ### Authentication context
 
-`AuthContext.jsx`:
+Authentication has been separated into three modules:
 
-- Maintains the current user and loading state.
+- `client/src/context/AuthContext.js` — creates and exports the shared React context.
+- `client/src/context/AuthProvider.jsx` — manages user state, loading state, session restoration, login, logout and refresh operations.
+- `client/src/context/useAuth.js` — provides the custom `useAuth` hook for accessing the context.
+
+This separation keeps the context provider and custom hook in separate modules and resolves the React Fast Refresh export warning.
+
+The provider:
+
 - Restores sessions through the current-user API.
-- Provides login and logout.
-- Exposes `isAuthenticated`, `user`, `loading` and `refreshUser`.
+- Maintains the current user and loading state.
+- Exposes `isAuthenticated`, `user`, `loading`, `login`, `logout` and `refreshUser`.
+- Clears frontend authentication state after logout.
 
 ### Navbar
 
@@ -581,22 +608,22 @@ Recent improvements:
 
 ### Latest production build
 
-The frontend production build was run after the styling updates.
+The latest frontend production build was run after the frontend testing and authentication-context changes.
 
 ```text
 vite v8.3.5 building client environment for production...
-✓ 39 modules transformed.
+✓ 41 modules transformed.
 dist/index.html                   0.45 kB │ gzip: 0.29 kB
-dist/assets/index-ChRLu0bU.css   24.99 kB │ gzip: 4.96 kB
-dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
-✓ built in 99ms
+dist/assets/index-Oxz8oxHF.css   27.88 kB │ gzip: 5.37 kB
+dist/assets/index-Cv33pAEz.js   300.96 kB │ gzip: 90.55 kB
+✓ built in 111ms
 ```
 
 **Result: Production build successful.**
 
 ## 10. Testing and Verification
 
-### Verified through frontend testing
+### Verified through frontend manual testing
 
 - Student registration.
 - Tutor registration.
@@ -619,7 +646,6 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Email-change request and verification workflow.
 - Updated email displayed in profile.
 - Latest responsive UI checks.
-- Latest production build.
 - Conditional Student registration.
 - Conditional Tutor registration.
 - Conditional Both-role registration.
@@ -631,6 +657,99 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Tutor subject checkbox alignment and styling.
 - Student and tutor profile updates independently for a dual-role account.
 - Dual-role profile changes persist after refreshing the page.
+
+### Automated frontend testing — 19 November 2026
+
+**Testing tools**
+
+- Vitest 5.1.1.
+- React Testing Library 16.3.3.
+- jest-dom 8.0.0.
+- user-event 14.6.13.
+- jsdom 31.0.1.
+
+**Test configuration**
+
+- Configuration: `client/vite.config.js`.
+- Setup file: `client/src/test/setup.js`.
+- Test environment: jsdom.
+- Test files use mocked authentication and tutor services where appropriate.
+- Tests do not make real backend requests or modify the development database.
+
+**Test files and coverage**
+
+| Test file | Coverage | Passing tests |
+|---|---|---:|
+| `client/src/App.test.jsx` | Home page heading and navigation links | 2 |
+| `client/src/components/ProtectedRoute.test.jsx` | Loading, unauthenticated redirects, student/tutor/dual-role access | 6 |
+| `client/src/pages/Login.test.jsx` | Login rendering, role-based redirects, API errors and loading state | 5 |
+| `client/src/pages/Register.test.jsx` | Conditional registration fields, role-specific payloads, validation and API errors | 7 |
+| **Total** | | **20** |
+
+**Latest frontend test result: 20/20 passing.**
+
+Run the frontend tests from the project root:
+
+```bash
+npm test --prefix client
+```
+
+Run frontend tests in watch mode:
+
+```bash
+npm run test:watch --prefix client
+```
+
+### Frontend lint and production build
+
+The following checks were completed successfully:
+
+```bash
+npm run lint --prefix client
+npm run build --prefix client
+```
+
+Results:
+
+- ESLint completed without errors or warnings.
+- Vite production build completed successfully.
+- All 20 frontend tests passed.
+
+### Frontend dependency security audit
+
+The frontend dependency audit initially reported moderate vulnerabilities involving `minimatch`.
+
+The dependencies were updated within their compatible version ranges using:
+
+```bash
+npm audit fix --prefix client
+```
+
+Relevant resolved versions:
+
+- ESLint: 10.15.0.
+- `@eslint/config-array`: 0.23.6.
+- `minimatch`: 11.0.9.
+
+The following checks were completed successfully:
+
+```bash
+npm ls eslint @eslint/config-array minimatch --prefix client
+npm audit --prefix client
+```
+
+**Latest frontend dependency audit result: 0 vulnerabilities.**
+
+The npm install-script review also reported no packages with unreviewed install scripts.
+
+### Frontend dependency security audit
+
+- Updated frontend dependencies using `npm audit fix`.
+- ESLint: 10.15.0.
+- @eslint/config-array: 0.23.6.
+- minimatch: 11.0.9.
+- Reviewed package install scripts; no packages remain with unreviewed install scripts.
+- Latest `npm audit --prefix client` result: **0 vulnerabilities**.
 
 ### Verified through backend testing
 
@@ -696,7 +815,7 @@ Email-change edge cases include:
 
 The email service is mocked during automated tests, so tests do not send real emails.
 
-Run the suite from the server directory:
+Run the backend suite from the server directory:
 
 ```bash
 npm test
@@ -710,12 +829,22 @@ npm run test:watch
 
 The test setup loads `.env.test` and enforces the `tutorhub_test` database name before tests execute. Automated tests must not run against the development database.
 
+### Combined automated test results
+
+| Test suite | Passing tests |
+|---|---:|
+| Backend | 53 |
+| Frontend | 20 |
+| **Combined total** | **73** |
+
+Both suites have passed their latest recorded runs. The frontend lint, production build and dependency audit have also passed.
+
 ### Implemented; further end-to-end review recommended
 
 - Complete booking creation through the React UI.
 - Tutor detail and booking-form experience.
 - Full cancellation and completion workflow.
-- Automated frontend tests.
+- Broader frontend component and integration test coverage.
 - Production email sending using a verified domain.
 - Deployment.
 
@@ -758,6 +887,11 @@ Do not describe untested functionality as fully verified.
 - [x] Invalid tutor profile field validation.
 - [x] Database transaction rollback verification.
 - [x] Automated backend test suite (53/53 passing).
+- [x] Automated frontend test suite (20/20 passing).
+- [x] Frontend lint check.
+- [x] Frontend production build after testing changes.
+- [x] Authentication context refactor.
+- [x] Frontend dependency audit (0 vulnerabilities).
 
 ### Verification completed — November 2026
 
@@ -770,6 +904,11 @@ Do not describe untested functionality as fully verified.
 - [x] Environment-file tracking check.
 - [x] Backend configuration and email-service review.
 - [x] Automated backend testing using a separate test database.
+- [x] Automated frontend tests.
+- [x] Frontend lint.
+- [x] Frontend production build after authentication-context refactor.
+- [x] Frontend dependency security audit.
+- [x] Review of npm install-script status.
 
 These checks do not replace end-to-end testing of every marketplace workflow.
 
@@ -783,8 +922,11 @@ These checks do not replace end-to-end testing of every marketplace workflow.
 - [x] Confirm `.env` files are ignored and not tracked.
 - [x] Create `server/.env.example` with placeholder configuration.
 - [x] Keep this progress document updated.
-- [ ] Review the latest automated-testing changes.
-- [ ] Organize completed work into meaningful Git commits after explicit approval.
+- [x] Implement automated backend testing.
+- [x] Implement automated frontend testing.
+- [ ] Review all frontend test and authentication-context changes.
+- [ ] Review the final Git diff, including untracked files.
+- [ ] Organize completed frontend testing work into meaningful Git commits after explicit approval.
 
 ### Phase 2 — Review the complete marketplace flow
 
@@ -799,13 +941,18 @@ These checks do not replace end-to-end testing of every marketplace workflow.
 ### Phase 3 — Quality and security
 
 - [x] Add automated backend tests (53 passing).
-- [ ] Add automated frontend tests.
+- [x] Add initial automated frontend tests (20 passing).
+- [x] Run frontend lint successfully.
+- [x] Run frontend production build successfully.
+- [x] Resolve reported frontend dependency vulnerabilities.
+- [x] Confirm frontend dependency audit reports zero vulnerabilities.
+- [ ] Expand frontend component and integration test coverage.
 - [ ] Review validation and error handling.
 - [ ] Review authentication and authorization.
 - [ ] Review CORS and cookie settings.
 - [ ] Review environment configuration.
 - [x] Test email verification edge cases, including token expiry and reuse.
-- [ ] Review dependency vulnerabilities carefully.
+- [ ] Review remaining security and production-readiness considerations.
 
 ### Phase 4 — Portfolio readiness
 
@@ -843,7 +990,7 @@ When continuing TutorHub development:
 - Draft truthful LinkedIn and X posts at meaningful completed milestones.
 - Never claim incomplete or untested features are complete.
 - Keep secrets out of source control and documentation.
-- Use `tutorhub_test` for automated tests, never the development database.
+- Use `tutorhub_test` for automated backend tests, never the development database.
 - Do not stage, commit or push without explicit approval.
 
 ## 14. Current Project Status and Handoff
@@ -866,22 +1013,31 @@ When continuing TutorHub development:
 - Created a separate PostgreSQL test database.
 - Added a schema-only database export for test setup.
 - Added a test-environment safety check to prevent tests from using the development database.
-- Added automated tests covering health checks, registration, authentication, profiles, account management, bookings and email changes.
-- Latest automated test result: **53/53 passing**.
+- Added automated backend tests covering health checks, registration, authentication, profiles, account management, bookings and email changes.
+- Latest automated backend test result: **53/53 passing**.
+- Set up Vitest and React Testing Library for frontend testing.
+- Added automated tests for the Home page, protected routes, Login and Registration.
+- Latest automated frontend test result: **20/20 passing**.
+- Refactored authentication context into separate context, provider and custom-hook modules.
+- Confirmed frontend lint passes without errors or warnings.
+- Confirmed the latest frontend production build succeeds.
+- Updated frontend dependencies to resolve the reported minimatch security advisory.
+- Confirmed the frontend dependency audit reports **0 vulnerabilities**.
+- Confirmed npm reports no packages with unreviewed install scripts.
 - Confirmed `.env.test` is ignored by Git.
 - Reviewed the schema export for accidental data or credentials.
-- `git diff --check` passed during the review.
 
 ### Remaining work
 
-1. Review the latest automated-testing changes and updated documentation.
-2. Review all modified and untracked files.
-3. Organize the completed automated-testing work into meaningful Git commits after explicit approval.
-4. Complete marketplace workflow and authorization testing through the frontend.
-5. Add automated frontend tests.
-6. Review security and production readiness.
-7. Prepare the README and deployment.
-8. Publish a truthful X update about the 53 passing backend tests if not already posted.
+1. Review the frontend testing changes and authentication-context refactor.
+2. Inspect all modified and untracked files.
+3. Review the final Git diff and whitespace checks.
+4. Organize the completed frontend testing work into meaningful Git commits after explicit approval.
+5. Complete marketplace workflow and authorization testing through the frontend.
+6. Expand automated frontend test coverage.
+7. Review remaining security and production-readiness considerations.
+8. Prepare the README and deployment.
+9. Publish a truthful X/LinkedIn update about the 20 frontend tests and 53 backend tests if not already posted.
 
 ### Important Git instructions
 
@@ -891,4 +1047,5 @@ When continuing TutorHub development:
 - Keep actual environment files and credentials out of source control.
 - Review the working tree before every commit.
 
-**Next immediate task:** Finish reviewing the `PROJECT_PROGRESS.md` changes, then inspect the final Git diff and prepare the automated-testing milestone for a commit only after approval.
+**Next immediate task:** Finish reviewing all modified and untracked frontend files, verify the final diff, and prepare the frontend testing milestone
+for a commit only after explicit approval.
