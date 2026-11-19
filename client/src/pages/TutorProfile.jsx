@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { getTutorById } from '../services/tutorService';
 import { createBooking } from '../services/bookingService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 // Get the current local date and time in datetime-local format
 function getLocalDateTime() {

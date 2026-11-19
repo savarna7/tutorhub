@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { verifyEmailChange } from '../services/profileService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 function VerifyEmailChange() {
     const [searchParams] = useSearchParams();

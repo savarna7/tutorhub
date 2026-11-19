@@ -1,29 +1,26 @@
-
 import {
-    createContext,
-    useContext,
     useEffect,
     useState
 } from 'react';
+
+import { AuthContext } from './AuthContext';
 
 import {
     getCurrentUser,
     logoutUser
 } from '../services/authService';
 
-const AuthContext = createContext(null);
-
-export function AuthProvider({ children }) {
+function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Restore the session when the application starts
+    // Restore the session when the application starts.
     useEffect(() => {
         const restoreSession = async () => {
             try {
                 const data = await getCurrentUser();
                 setUser(data.user);
-            } catch (error) {
+            } catch {
                 setUser(null);
             } finally {
                 setLoading(false);
@@ -33,7 +30,7 @@ export function AuthProvider({ children }) {
         restoreSession();
     }, []);
 
-    // Update React state after successful login
+    // Update React state after successful login.
     const login = (userData) => {
         setUser(userData);
     };
@@ -43,13 +40,13 @@ export function AuthProvider({ children }) {
             const data = await getCurrentUser();
             setUser(data.user);
             return data.user;
-        } catch (error) {
+        } catch {
             setUser(null);
             return null;
         }
     };
 
-    // Log out from the backend and clear frontend state
+    // Log out from the backend and clear frontend state.
     const logout = async () => {
         try {
             await logoutUser();
@@ -74,12 +71,4 @@ export function AuthProvider({ children }) {
     );
 }
 
-export function useAuth() {
-    const context = useContext(AuthContext);
-
-    if (!context) {
-        throw new Error('useAuth must be used inside an AuthProvider');
-    }
-
-    return context;
-}
+export default AuthProvider;
