@@ -1,6 +1,6 @@
 # TutorHub — Project Progress & Handoff
 
-**Last updated:** 17 November 2026
+**Last updated: 19 November 2026**
 
 ## 1. Project Overview
 
@@ -16,6 +16,7 @@ The project is being developed to demonstrate practical full-stack development s
 - **Authentication:** bcrypt, JWT, HttpOnly cookies
 - **Database driver:** pg
 - **Email service:** Resend
+- **Testing:** Vitest, Supertest
 - **Other dependencies:** CORS, cookie-parser, dotenv
 - **Version control:** Git and GitHub
 
@@ -38,36 +39,38 @@ Port 5000 previously returned an AirTunes-related HTTP 403, so port 5001 is used
 
 Current branch: `main`
 
-### Known commits
+### Recent known commits
 
 | Commit | Description |
 |---|---|
 | `8a89731` | Build initial TutorHub React landing page |
-| `3a12c7d` | Set up Express backend and PostgreSQL connection |
-| `1465414` | Add booking APIs with validation and conflict prevention |
-| `77afa5f` | Implement user authentication and protect booking routes |
-| `fdc7a83` | Connect React frontend with authentication APIs |
-| `f2f045a` | Add React auth context and dynamic navbar |
+| `d2fc0d3` | Implement role-specific registration |
+| `bcd68e8` | Add tutor profile and subject management |
+| `7be9786` | Update TutorHub project documentation |
+
+Other earlier commits covered the Express backend, PostgreSQL connection, booking APIs, authentication, frontend integration, and project documentation.
+
+GitHub repository: `https://github.com/savarna7/tutorhub`
 
 ### Current working-tree status
 
-The latest inspected Git status showed multiple modified and untracked files across the frontend and backend.
+The latest confirmed clean Git state was after commit `7be9786`.
 
-Outstanding changes include:
-- Authentication and session management.
-- Booking functionality.
-- Profile management.
-- Tutor discovery and tutor detail pages.
-- Student and tutor dashboards.
-- Email verification.
-- Responsive UI improvements.
-- Project progress documentation.
+Since then, automated backend testing has been added. The following changes are currently uncommitted:
 
-The latest production build passed successfully.
+- Modified `server/package.json`.
+- Modified `server/package-lock.json`.
+- New `server/db/schema.sql`.
+- New `server/tests/app.test.js`.
+- New `server/tests/setup.js`.
+- New `server/vitest.config.js`.
 
-**No new commits were made during the latest UI-polish session.**
+The local `server/.env.test` file is ignored by Git and must remain untracked.
+
+**No staging, committing, or pushing has been performed for these latest automated-testing changes.**
 
 Before committing:
+
 - Run `git status --short`.
 - Review relevant diffs.
 - Inspect untracked files.
@@ -112,6 +115,12 @@ tutorhub/
 │           ├── profileService.js
 │           └── tutorService.js
 └── server/
+    ├── db/
+    │   └── schema.sql
+    ├── tests/
+    │   ├── app.test.js
+    │   └── setup.js
+    ├── vitest.config.js
     └── src/
         ├── server.js
         ├── app.js
@@ -132,7 +141,9 @@ This is a known high-level structure, not an exhaustive freshly generated listin
 
 ## 5. Database Design
 
-Database name: `tutorhub`
+Development database name: `tutorhub`
+
+Automated tests use a separate database named `tutorhub_test`.
 
 The known schema contains seven tables.
 
@@ -208,6 +219,7 @@ Composite primary key: `(tutor_id, subject_id)`.
 | updated_at | timestamptz |
 
 Constraints include:
+
 - Duration must be positive.
 - Booking price must be non-negative.
 - Allowed statuses: `pending`, `confirmed`, `completed`, `cancelled`, `rejected`.
@@ -218,6 +230,7 @@ Constraints include:
 Supports email-change verification.
 
 Known columns:
+
 - id
 - user_id referencing users with ON DELETE CASCADE
 - new_email
@@ -238,9 +251,20 @@ The time range uses `[)`, allowing one session to start exactly when another end
 
 **Preserve this database-level protection.**
 
+### Schema export
+
+A schema-only PostgreSQL export is stored at:
+
+`server/db/schema.sql`
+
+It contains database structure and constraints, not development database records.
+
+The schema is used to initialize the separate automated-test database.
+
 ## 6. Multiple-Role Architecture
 
 One account can be:
+
 - A student.
 - A tutor.
 - Both a student and a tutor.
@@ -267,6 +291,7 @@ A dual-role account can access both dashboards and its own student and tutor boo
 ### Application setup
 
 The Express application:
+
 - Configures CORS for `http://localhost:5173`.
 - Enables credentials.
 - Enables JSON parsing and cookie-parser.
@@ -283,6 +308,7 @@ Implemented endpoints:
 - `POST /api/auth/logout`
 
 Registration:
+
 - Supports Student, Tutor and Both roles.
 - Collects role-specific information during registration.
 - Student fields: education level and learning goals.
@@ -294,6 +320,7 @@ Registration:
 - Prevents duplicate email registration.
 
 Login:
+
 - Retrieves the account and associated roles.
 - Verifies the password with `bcrypt.compare()`.
 - Generates a JWT containing the account ID in `sub`.
@@ -301,15 +328,18 @@ Login:
 - Does not expose the JWT to frontend JavaScript.
 
 Session restoration:
+
 - `/me` retrieves the authenticated user's current information and roles.
 - The frontend restores the login session after refresh.
 
 Logout:
+
 - Clears the authentication cookie.
 
 ### Authentication middleware
 
 `server/src/middleware/authMiddleware.js`:
+
 - Reads the JWT from `req.cookies.token`.
 - Verifies it using `JWT_SECRET`.
 - Extracts the account ID from `sub`.
@@ -319,12 +349,14 @@ Logout:
 ### Booking routes
 
 Implemented functionality:
+
 - Retrieve student bookings.
 - Retrieve tutor bookings.
 - Create bookings.
 - Update booking status through the tutor workflow.
 
 Booking creation:
+
 - Requires authentication.
 - Uses the authenticated account ID as the student ID.
 - Checks that the account has a student profile.
@@ -336,6 +368,7 @@ Booking creation:
 - Handles overlapping booking errors.
 
 Authorization:
+
 - Students can retrieve only their own bookings.
 - Tutors can retrieve only their own incoming bookings.
 - Tutors can accept or reject only their own pending bookings.
@@ -347,11 +380,16 @@ A complete cancellation and completion workflow still requires review.
 
 Tutor listing and tutor detail functionality are implemented in `server/src/routes/tutorRoutes.js`.
 
-The frontend consumes the tutor data through its tutor service.
+The frontend consumes tutor data through its tutor service.
+
+Available subjects are retrieved through:
+
+`GET /api/tutors/subjects`
 
 ### Profile routes
 
 `server/src/routes/profileRoutes.js` supports:
+
 - Retrieving the authenticated user's profile.
 - Updating shared account details.
 - Updating student profile details.
@@ -360,11 +398,12 @@ The frontend consumes the tutor data through its tutor service.
 - Verifying an email change.
 
 Additional tutor profile functionality:
-- Retrieves available subjects through `GET /api/tutors/subjects`.
+
 - Retrieves the authenticated user's existing subject assignments through `GET /api/profiles/me`.
 - Updates tutor details and subject assignments through `PUT /api/profiles/tutor`.
 - Validates selected subject IDs.
-- Replaces previous subject assignments with the newly selected subjects.
+- Rejects invalid and duplicate subject IDs.
+- Replaces previous subject assignments with newly selected subjects.
 - Uses a PostgreSQL transaction so tutor details and subject assignments are updated together.
 - Returns the updated tutor profile, including selected subjects.
 
@@ -373,11 +412,13 @@ Additional tutor profile functionality:
 `server/src/services/emailService.js` uses Resend to send verification emails.
 
 Development/testing sender:
+
 `TutorHub <onboarding@resend.dev>`
 
 Resend's test sender has recipient restrictions until a sending domain is verified.
 
 For production:
+
 - Verify a sending domain.
 - Update the sender configuration.
 - Configure the production client URL.
@@ -391,6 +432,7 @@ For production:
 `client/src/App.jsx` uses React Router.
 
 Routes include:
+
 - `/` — Home
 - `/tutors` — Tutor discovery
 - `/tutors/:tutorId` — Tutor detail
@@ -406,6 +448,7 @@ Protected routes use `ProtectedRoute.jsx` and role checks.
 ### Authentication context
 
 `AuthContext.jsx`:
+
 - Maintains the current user and loading state.
 - Restores sessions through the current-user API.
 - Provides login and logout.
@@ -414,6 +457,7 @@ Protected routes use `ProtectedRoute.jsx` and role checks.
 ### Navbar
 
 `Navbar.jsx`:
+
 - Displays TutorHub navigation.
 - Shows Login and Sign Up when logged out.
 - Displays the logged-in user's name.
@@ -423,6 +467,7 @@ Protected routes use `ProtectedRoute.jsx` and role checks.
 ### Login and registration
 
 Login:
+
 - Calls the login API.
 - Updates AuthContext after successful login.
 - Redirects student and dual-role accounts to the student dashboard by default.
@@ -430,6 +475,7 @@ Login:
 - Displays loading and error states.
 
 Registration:
+
 - Supports Student, Tutor and Both.
 - Dynamically displays role-specific registration fields.
 - Collects student education level and learning goals.
@@ -444,6 +490,7 @@ Registration has been manually tested successfully for all three account types.
 ### Tutor discovery
 
 `Tutors.jsx`:
+
 - Fetches tutor data from the API.
 - Displays tutor names, qualifications, experience, subjects and hourly rates.
 - Provides navigation to tutor detail pages.
@@ -461,13 +508,14 @@ Search, filtering, sorting, combined filters and responsive layout were tested b
 
 `TutorProfile.jsx` provides the tutor detail route and displays tutor information.
 
-Review the current booking-form integration and test the complete flow before claiming it is fully verified.
+The current booking-form integration and complete booking flow still require end-to-end verification.
 
 ### Student and tutor dashboards
 
 `StudentDashboard.jsx` and `TutorDashboard.jsx` display booking information and summary counts.
 
 Implemented:
+
 - Booking lists and details.
 - Booking totals and status counts.
 - All, Pending, Confirmed and Cancelled filters.
@@ -480,6 +528,7 @@ The user previously tested both dashboards, status actions, filters and status p
 ### Profile management
 
 `Profile.jsx` supports editing:
+
 - Shared account details such as full name and phone number.
 - Student education level and learning goals.
 - Tutor qualification, experience, hourly rate and bio.
@@ -487,17 +536,19 @@ The user previously tested both dashboards, status actions, filters and status p
 - Email-change requests through verification.
 
 Additional functionality:
+
 - Loads available subjects from the tutor subjects API.
 - Preselects subjects already assigned to the tutor.
 - Allows tutors to add and remove subjects.
 - Saves updated subject assignments to PostgreSQL.
 - Displays profile sections according to the user's roles.
 
-The tutor subject editing workflow was tested using a Tutor-only account, including persistence after refreshing the page. Both-role profile editing still requires verification.
+Profile editing was tested using Tutor-only and Both-role accounts. For the dual-role account, student and tutor details were updated independently and verified to persist after refreshing the page.
 
 ### Email verification page
 
 `VerifyEmailChange.jsx`:
+
 - Reads the verification token from the URL.
 - Requires explicit confirmation.
 - Calls the verification API.
@@ -506,6 +557,7 @@ The tutor subject editing workflow was tested using a Tutor-only account, includ
 ### Frontend services
 
 Service modules exist for:
+
 - Authentication.
 - Bookings.
 - Profiles.
@@ -516,6 +568,7 @@ They centralize API requests and use credentials where cookie-based authenticati
 ## 9. UI and Responsive Design — 16 November 2026
 
 Recent improvements:
+
 - Improved Home page layout and presentation.
 - Updated Login and Sign Up page markup.
 - Applied a consistent authentication-card design.
@@ -537,7 +590,6 @@ dist/index.html                   0.45 kB │ gzip: 0.29 kB
 dist/assets/index-ChRLu0bU.css   24.99 kB │ gzip: 4.96 kB
 dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 ✓ built in 99ms
-
 ```
 
 **Result: Production build successful.**
@@ -568,15 +620,17 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Updated email displayed in profile.
 - Latest responsive UI checks.
 - Latest production build.
-- [x] Conditional Student registration.
-- [x] Conditional Tutor registration.
-- [x] Conditional Both-role registration.
-- [x] Tutor qualification, experience, hourly rate and bio saved during registration.
-- [x] Multiple tutor subjects saved during registration.
-- [x] Tutor profile editing.
-- [x] Adding and removing teaching subjects.
-- [x] Updated subject assignments persist after refreshing the Profile page.
-- [x] Tutor subject checkbox alignment and styling.
+- Conditional Student registration.
+- Conditional Tutor registration.
+- Conditional Both-role registration.
+- Tutor qualification, experience, hourly rate and bio saved during registration.
+- Multiple tutor subjects saved during registration.
+- Tutor profile editing.
+- Adding and removing teaching subjects.
+- Updated subject assignments persist after refreshing the Profile page.
+- Tutor subject checkbox alignment and styling.
+- Student and tutor profile updates independently for a dual-role account.
+- Dual-role profile changes persist after refreshing the page.
 
 ### Verified through backend testing
 
@@ -591,21 +645,77 @@ dist/assets/index-DhmcbJM3.js   297.80 kB │ gzip: 89.84 kB
 - Booking creation returns HTTP 201.
 - Duplicate overlapping booking returns HTTP 409.
 - Database-level overlap prevention works.
-- [x] Available subjects endpoint returns the subjects catalog.
-- [x] Tutor listing returns tutors with their assigned subjects.
-- [x] Registration creates the appropriate role-specific profile records.
-- [x] Registration saves tutor subject assignments.
-- [x] Tutor profile update endpoint validates and saves subject assignments.
-- [x] Tutor profile updates and subject assignments are handled transactionally.
-- [x] `node --check src/routes/authRoutes.js` passed.
-- [x] `node --check src/routes/profileRoutes.js` passed.
+- Available subjects endpoint returns the subjects catalog.
+- Tutor listing returns tutors with their assigned subjects.
+- Registration creates the appropriate role-specific profile records.
+- Registration saves tutor subject assignments.
+- Tutor profile update endpoint validates and saves subject assignments.
+- Invalid subject IDs and duplicate subject selections are rejected.
+- Invalid tutor profile fields are rejected.
+- Tutor profile updates and subject assignments are handled transactionally.
+- Database transaction rollback restores the original tutor profile and subject assignments after an intentional database failure.
+- `node --check src/routes/authRoutes.js` passed.
+- `node --check src/routes/profileRoutes.js` passed.
+
+### Automated backend testing — 19 November 2026
+
+**Test tools**
+
+- Test framework: Vitest 5.1.1.
+- HTTP integration testing: Supertest 7.3.2.
+- Test file: `server/tests/app.test.js`.
+- Test configuration: `server/vitest.config.js`.
+- Test setup: `server/tests/setup.js`.
+- Test database: `tutorhub_test`, separate from the development database.
+- Test environment: `server/.env.test` (ignored by Git).
+- Database schema export: `server/db/schema.sql`.
+
+**Latest test result: 53/53 passing.**
+
+Coverage:
+
+| Test area | Passing tests |
+|---|---:|
+| API health and database connection | 2 |
+| Registration | 6 |
+| Authentication | 7 |
+| Profile management | 7 |
+| Account management | 4 |
+| Booking API | 16 |
+| Email-change API | 11 |
+| **Total** | **53** |
+
+Email-change edge cases include:
+
+- Malformed verification tokens.
+- Expired tokens.
+- Duplicate pending email reservations.
+- Failed email delivery.
+- Superseded verification links.
+- Token reuse.
+
+The email service is mocked during automated tests, so tests do not send real emails.
+
+Run the suite from the server directory:
+
+```bash
+npm test
+```
+
+Run tests in watch mode:
+
+```bash
+npm run test:watch
+```
+
+The test setup loads `.env.test` and enforces the `tutorhub_test` database name before tests execute. Automated tests must not run against the development database.
 
 ### Implemented; further end-to-end review recommended
 
 - Complete booking creation through the React UI.
 - Tutor detail and booking-form experience.
 - Full cancellation and completion workflow.
-- Automated frontend and backend tests.
+- Automated frontend tests.
 - Production email sending using a verified domain.
 - Deployment.
 
@@ -643,9 +753,13 @@ Do not describe untested functionality as fully verified.
 - [x] Tutor subject management in the Profile page.
 - [x] Transactional tutor profile and subject updates.
 - [x] Subject selection persistence after page refresh.
+- [x] Dual-role profile editing and persistence verification.
+- [x] Invalid subject ID and duplicate subject selection validation.
+- [x] Invalid tutor profile field validation.
+- [x] Database transaction rollback verification.
+- [x] Automated backend test suite (53/53 passing).
 
-
-### Verification completed — November 16, 2026
+### Verification completed — November 2026
 
 - [x] CSS and responsive layout review.
 - [x] Frontend production build.
@@ -655,6 +769,7 @@ Do not describe untested functionality as fully verified.
 - [x] PostgreSQL connection endpoint check.
 - [x] Environment-file tracking check.
 - [x] Backend configuration and email-service review.
+- [x] Automated backend testing using a separate test database.
 
 These checks do not replace end-to-end testing of every marketplace workflow.
 
@@ -667,29 +782,29 @@ These checks do not replace end-to-end testing of every marketplace workflow.
 - [x] Review and remove the development-only `server/src/testEmail.js` utility.
 - [x] Confirm `.env` files are ignored and not tracked.
 - [x] Create `server/.env.example` with placeholder configuration.
-- [ ] Organize completed work into meaningful commits.
 - [x] Keep this progress document updated.
-
+- [ ] Review the latest automated-testing changes.
+- [ ] Organize completed work into meaningful Git commits after explicit approval.
 
 ### Phase 2 — Review the complete marketplace flow
 
 - [ ] Test tutor discovery through tutor detail.
 - [ ] Test booking creation from the frontend.
 - [ ] Test the student booking view.
-- [ ] Test tutor accept and reject actions.
+- [ ] Test tutor accept and reject actions through the complete UI flow.
 - [ ] Review cancellation and completion behavior.
-- [ ] Test invalid inputs and unavailable slots.
-- [ ] Test authorization boundaries.
+- [ ] Test invalid inputs and unavailable slots through the frontend.
+- [ ] Test authorization boundaries across marketplace workflows.
 
 ### Phase 3 — Quality and security
 
-- [ ] Add automated backend tests.
+- [x] Add automated backend tests (53 passing).
 - [ ] Add automated frontend tests.
 - [ ] Review validation and error handling.
 - [ ] Review authentication and authorization.
 - [ ] Review CORS and cookie settings.
 - [ ] Review environment configuration.
-- [ ] Review email verification edge cases and token expiry.
+- [x] Test email verification edge cases, including token expiry and reuse.
 - [ ] Review dependency vulnerabilities carefully.
 
 ### Phase 4 — Portfolio readiness
@@ -703,21 +818,19 @@ These checks do not replace end-to-end testing of every marketplace workflow.
 - [ ] Test the deployed application.
 - [ ] Publish truthful LinkedIn and X updates at meaningful milestones.
 
-### Additional profile verification
-
-- [ ] Test profile editing using a Both-role account.
-- [ ] Verify student and tutor profile updates independently for a dual-role account.
-- [ ] Test invalid subject IDs and duplicate subject selections.
-- [ ] Test tutor profile updates with invalid numeric values.
-- [ ] Verify rollback behavior when a tutor profile update fails.
-
 ### Additional quality checks
 
+- [x] Test profile editing using a Both-role account.
+- [x] Verify student and tutor profile updates independently for a dual-role account.
+- [x] Test invalid subject IDs and duplicate subject selections.
+- [x] Test tutor profile updates with invalid numeric values.
+- [x] Verify rollback behavior when a tutor profile update fails.
 - [ ] Verify registration and profile-editing workflows after a fresh login.
 
 ## 13. Development Preferences and Handoff Instructions
 
 When continuing TutorHub development:
+
 - Work step by step.
 - Give exact file paths and terminal commands.
 - Explain code and architectural decisions.
@@ -730,42 +843,12 @@ When continuing TutorHub development:
 - Draft truthful LinkedIn and X posts at meaningful completed milestones.
 - Never claim incomplete or untested features are complete.
 - Keep secrets out of source control and documentation.
-
+- Use `tutorhub_test` for automated tests, never the development database.
+- Do not stage, commit or push without explicit approval.
 
 ## 14. Current Project Status and Handoff
 
-### Completed in the November 16, 2026 review
-
-- Reviewed the frontend CSS and responsive layouts.
-- Reviewed authentication, booking, profile, tutor and dashboard implementation.
-- Reviewed backend routes, middleware, database connection and email service.
-- Created `server/.env.example` with placeholder values.
-- Confirmed actual environment files are not tracked by Git.
-- Removed the development-only `server/src/testEmail.js` utility.
-- `git diff --check` passed.
-- Frontend production build passed: 39 modules, completed in 99ms.
-- Backend dependencies verified using `npm ls --depth=0`.
-- Backend health endpoint returned HTTP 200.
-- PostgreSQL connection endpoint returned HTTP 200.
-
-### Remaining work
-
-1. Complete the final review of all changed and new files.
-2. Update this document with any additional findings.
-3. Organize the work into meaningful Git commits after approval.
-4. Complete marketplace workflow and authorization testing.
-5. Add automated tests.
-6. Review security and production readiness.
-7. Prepare the README and deployment.
-
-### Important Git instructions
-
-- Preserve all existing uncommitted work.
-- Do not use destructive Git commands.
-- Do not stage or commit without explicit approval.
-- Keep actual environment files and credentials out of source control.
-
-### Completed on November 17, 2026
+### Completed in the November 2026 review
 
 - Implemented conditional registration for Student, Tutor and Both roles.
 - Added role-specific registration fields.
@@ -775,14 +858,37 @@ When continuing TutorHub development:
 - Implemented tutor profile and subject updates.
 - Added subject selection controls to the Profile page.
 - Verified tutor subject changes persist after refreshing.
-- Fixed checkbox and subject-name alignment.
-- Passed JavaScript syntax checks for `authRoutes.js` and `profileRoutes.js`.
+- Verified dual-role profile editing for student and tutor sections independently.
+- Tested invalid subject IDs and duplicate subject selections.
+- Tested invalid tutor profile fields.
+- Verified database transaction rollback after an intentional database failure.
+- Set up Vitest and Supertest for automated backend testing.
+- Created a separate PostgreSQL test database.
+- Added a schema-only database export for test setup.
+- Added a test-environment safety check to prevent tests from using the development database.
+- Added automated tests covering health checks, registration, authentication, profiles, account management, bookings and email changes.
+- Latest automated test result: **53/53 passing**.
+- Confirmed `.env.test` is ignored by Git.
+- Reviewed the schema export for accidental data or credentials.
+- `git diff --check` passed during the review.
 
-### Remaining verification
+### Remaining work
 
-- Test profile editing with a Both-role account.
-- Test invalid input and transaction rollback scenarios.
-- Test profile editing with a Both-role account.
-- Test invalid input and transaction rollback scenarios.
-- Verify registration and profile editing after a fresh login.
-- Review all changes before organizing Git commits.
+1. Review the latest automated-testing changes and updated documentation.
+2. Review all modified and untracked files.
+3. Organize the completed automated-testing work into meaningful Git commits after explicit approval.
+4. Complete marketplace workflow and authorization testing through the frontend.
+5. Add automated frontend tests.
+6. Review security and production readiness.
+7. Prepare the README and deployment.
+8. Publish a truthful X update about the 53 passing backend tests if not already posted.
+
+### Important Git instructions
+
+- Preserve all existing uncommitted work.
+- Do not use destructive Git commands.
+- Do not stage or commit without explicit approval.
+- Keep actual environment files and credentials out of source control.
+- Review the working tree before every commit.
+
+**Next immediate task:** Finish reviewing the `PROJECT_PROGRESS.md` changes, then inspect the final Git diff and prepare the automated-testing milestone for a commit only after approval.
