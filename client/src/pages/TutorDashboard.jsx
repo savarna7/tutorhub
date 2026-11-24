@@ -45,6 +45,14 @@ function TutorDashboard() {
         (booking) => booking.status === 'cancelled'
     ).length;
 
+    const rejectedCount = bookings.filter(
+        (booking) => booking.status === 'rejected'
+    ).length;
+
+    const completedCount = bookings.filter(
+        (booking) => booking.status === 'completed'
+    ).length;
+
     const filteredBookings = bookings.filter((booking) => {
         if (activeFilter === 'all') {
             return true;
@@ -171,10 +179,24 @@ function TutorDashboard() {
                     </button>
 
                     <button
+                        className={activeFilter === 'completed' ? 'active' : ''}
+                        onClick={() => setActiveFilter('completed')}
+                    >
+                        Completed ({completedCount})
+                    </button>
+
+                    <button
                         className={activeFilter === 'cancelled' ? 'active' : ''}
                         onClick={() => setActiveFilter('cancelled')}
                     >
                         Cancelled ({cancelledCount})
+                    </button>
+
+                    <button
+                        className={activeFilter === 'rejected' ? 'active' : ''}
+                        onClick={() => setActiveFilter('rejected')}
+                    >
+                        Rejected ({rejectedCount})
                     </button>
                 </div>
 
@@ -265,7 +287,7 @@ function TutorDashboard() {
                                             onClick={() =>
                                                 handleBookingAction(
                                                     booking.booking_id,
-                                                    'cancelled'
+                                                    'rejected'
                                                 )
                                             }
                                             disabled={updatingBookingId !== null}
@@ -273,6 +295,39 @@ function TutorDashboard() {
                                             {updatingBookingId === booking.booking_id
                                                 ? 'Updating...'
                                                 : 'Reject Request'}
+                                        </button>
+                                    </div>
+                                )}
+                                {booking.status === 'confirmed' && (
+                                    <div className="booking-actions">
+                                        <button
+                                            className="accept-booking-button"
+                                            onClick={() =>
+                                                handleBookingAction(
+                                                    booking.booking_id,
+                                                    'completed'
+                                                )
+                                            }
+                                            disabled={updatingBookingId !== null}
+                                        >
+                                            {updatingBookingId === booking.booking_id
+                                                ? 'Updating...'
+                                                : 'Mark as Completed'}
+                                        </button>
+
+                                        <button
+                                            className="reject-booking-button"
+                                            onClick={() =>
+                                                handleBookingAction(
+                                                    booking.booking_id,
+                                                    'cancelled'
+                                                )
+                                            }
+                                            disabled={updatingBookingId !== null}
+                                        >
+                                            {updatingBookingId === booking.booking_id
+                                                ? 'Updating...'
+                                                : 'Cancel Session'}
                                         </button>
                                     </div>
                                 )}

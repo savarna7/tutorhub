@@ -89,7 +89,7 @@ router.put('/tutor', authenticateToken, async (req, res) => {
         hourlyRate,
         bio,
         subjectIds
-    } = req.body;
+    } = req.body ?? {};
 
     // Validate numeric fields
     const experience = Number(experienceYears);
@@ -121,7 +121,8 @@ router.put('/tutor', authenticateToken, async (req, res) => {
     if (
         (qualification != null && typeof qualification !== 'string') ||
         (bio != null && typeof bio !== 'string') ||
-        (qualification && qualification.trim().length > 150)
+        (qualification && qualification.trim().length > 150) ||
+        (bio && bio.trim().length > 1000)
     ) {
         return res.status(400).json({
             success: false,
@@ -277,7 +278,8 @@ router.put('/student', authenticateToken, async (req, res) => {
         if (
             (educationLevel != null && typeof educationLevel !== 'string') ||
             (learningGoals != null && typeof learningGoals !== 'string') ||
-            (educationLevel && educationLevel.length > 100)
+            (educationLevel && educationLevel.trim().length > 100) ||
+            (learningGoals && learningGoals.trim().length > 1000)
         ) {
             return res.status(400).json({
                 success: false,
@@ -398,7 +400,7 @@ router.put('/account', authenticateToken, async (req, res) => {
 // POST /api/profiles/request-email-change
 // Request a change to the logged-in user's email address
 router.post('/request-email-change', authenticateToken, async (req, res) => {
-    const { newEmail } = req.body;
+    const { newEmail } = req.body ?? {};
 
     if (
         typeof newEmail !== 'string' ||
@@ -432,7 +434,7 @@ router.post('/request-email-change', authenticateToken, async (req, res) => {
 
         // Get the current email address
         const userResult = await client.query(
-            'SELECT email FROM users WHERE id = $1;',
+            'SELECT email FROM users WHERE id = $1 FOR UPDATE;',
             [req.user.id]
         );
 
@@ -453,6 +455,12 @@ router.post('/request-email-change', authenticateToken, async (req, res) => {
                 message: 'This is already your current email address.'
             });
         }
+
+        // Prevent concurrent requests from reserving the same email
+        await client.query(
+            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0));',
+            [normalizedEmail]
+        );
 
         // Check whether another account already uses this email
         const existingEmail = await client.query(
@@ -568,7 +576,7 @@ router.post('/request-email-change', authenticateToken, async (req, res) => {
 // POST /api/profiles/verify-email-change
 // Verify the token and update the user's email address
 router.post('/verify-email-change', async (req, res) => {
-    const { token } = req.body;
+    const { token } = req.body ?? {};
 
     if (
         typeof token !== 'string' ||

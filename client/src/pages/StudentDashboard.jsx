@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../context/useAuth';
-import { getStudentBookings } from '../services/bookingService';
+import {
+    getStudentBookings,
+    updateBookingStatus
+} from '../services/bookingService';
 
 function StudentDashboard() {
     const { user } = useAuth();
@@ -12,6 +15,8 @@ function StudentDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+    const [updatingBookingId, setUpdatingBookingId] = useState(null);
+    const [actionError, setActionError] = useState('');
 
     useEffect(() => {
         const fetchBookings = async () => {
@@ -40,6 +45,14 @@ function StudentDashboard() {
         (booking) => booking.status === 'cancelled'
     ).length;
 
+    const rejectedCount = bookings.filter(
+        (booking) => booking.status === 'rejected'
+    ).length;
+
+    const completedCount = bookings.filter(
+        (booking) => booking.status === 'completed'
+    ).length;
+
     const filteredBookings = bookings.filter((booking) => {
         if (activeFilter === 'all') {
             return true;
@@ -53,6 +66,27 @@ function StudentDashboard() {
             Number(booking.hourly_rate_at_booking) *
             Number(booking.duration_minutes) / 60
         );
+    };
+
+    const handleBookingAction = async (bookingId, status) => {
+        try {
+            setUpdatingBookingId(bookingId);
+            setActionError('');
+
+            await updateBookingStatus(bookingId, status);
+
+            setBookings((currentBookings) =>
+                currentBookings.map((booking) =>
+                    booking.booking_id === bookingId
+                        ? { ...booking, status }
+                        : booking
+                )
+            );
+        } catch (err) {
+            setActionError(err.message);
+        } finally {
+            setUpdatingBookingId(null);
+        }
     };
 
     const formatDate = (date) => {
@@ -121,6 +155,10 @@ function StudentDashboard() {
                     <span>{filteredBookings.length} shown</span>
                 </div>
 
+                {actionError && (
+                    <p className="booking-error">{actionError}</p>
+                )}
+
                 <div className="booking-filters">
                     <button
                         className={activeFilter === 'all' ? 'active' : ''}
@@ -144,10 +182,24 @@ function StudentDashboard() {
                     </button>
 
                     <button
+                        className={activeFilter === 'completed' ? 'active' : ''}
+                        onClick={() => setActiveFilter('completed')}
+                    >
+                        Completed ({completedCount})
+                    </button>
+
+                    <button
                         className={activeFilter === 'cancelled' ? 'active' : ''}
                         onClick={() => setActiveFilter('cancelled')}
                     >
                         Cancelled ({cancelledCount})
+                    </button>
+
+                    <button
+                        className={activeFilter === 'rejected' ? 'active' : ''}
+                        onClick={() => setActiveFilter('rejected')}
+                    >
+                        Rejected ({rejectedCount})
                     </button>
                 </div>
 
@@ -215,6 +267,24 @@ function StudentDashboard() {
                                 <div className="booking-card-footer">
                                     Booking ID: #{booking.booking_id}
                                 </div>
+                                {['pending', 'confirmed'].includes(booking.status) && (
+                                    <div className="booking-actions">
+                                        <button
+                                            className="reject-booking-button"
+                                            onClick={() =>
+                                                handleBookingAction(
+                                                    booking.booking_id,
+                                                    'cancelled'
+                                                )
+                                            }
+                                            disabled={updatingBookingId !== null}
+                                        >
+                                            {updatingBookingId === booking.booking_id
+                                                ? 'Updating...'
+                                                : 'Cancel Booking'}
+                                        </button>
+                                    </div>
+                                )}
                             </article>
                         ))}
                     </div>

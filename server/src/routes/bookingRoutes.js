@@ -137,7 +137,8 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
 });
 
 
-// PATCH the status of a booking (tutor only)
+
+// PATCH the status of a booking
 router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
     try {
         const { bookingId } = req.params;
@@ -154,24 +155,59 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
             });
         }
 
-        // Only these status changes are allowed
-        if (!['confirmed', 'cancelled'].includes(status)) {
+        // Validate requested status
+        const allowedStatuses = [
+            'confirmed',
+            'rejected',
+            'cancelled',
+            'completed'
+        ];
+
+        if (!allowedStatuses.includes(status)) {
             return res.status(400).json({
                 success: false,
-                message: 'Status must be confirmed or cancelled.'
+                message: 'Invalid booking status.'
             });
         }
 
-        // Only the tutor who owns the booking can update it.
-        // Only pending bookings can be updated.
+        /*
+         * Allowed transitions:
+         *
+         * Tutor:
+         * pending   -> confirmed
+         * pending   -> rejected
+         * confirmed -> cancelled
+         * confirmed -> completed
+         *
+         * Student:
+         * pending   -> cancelled
+         * confirmed -> cancelled
+         */
+
         const query = `
             UPDATE bookings
             SET
                 status = $1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-              AND tutor_id = $3
-              AND status = 'pending'
+              AND (
+                    (
+                        tutor_id = $3
+                        AND (
+                            (status = 'pending'
+                                AND $1 IN ('confirmed', 'rejected'))
+                            OR
+                            (status = 'confirmed'
+                                AND $1 IN ('cancelled', 'completed'))
+                        )
+                    )
+                    OR
+                    (
+                        student_id = $3
+                        AND status IN ('pending', 'confirmed')
+                        AND $1 = 'cancelled'
+                    )
+              )
             RETURNING id AS booking_id, status;
         `;
 
@@ -184,7 +220,7 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
         if (result.rowCount === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Booking not found or it is no longer pending.'
+                message: 'Booking not found or this status transition is not allowed.'
             });
         }
 
@@ -203,6 +239,7 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 
@@ -255,26 +292,30 @@ router.post('/', authenticateToken, async (req, res) => {
             });
         }
 
-        // 2. Validate numeric IDs and duration
+
+        // 2. Validate numeric IDs and supported session duration
         const ids = [studentId, tutorId, subjectId];
 
+        const allowedDurations = [30, 60, 90, 120];
+
         if (
-            !ids.every(id => Number.isSafeInteger(Number(id)) && Number(id) > 0) ||
-            !Number.isSafeInteger(Number(durationMinutes)) ||
-            Number(durationMinutes) <= 0
+            !ids.every(id =>
+                Number.isSafeInteger(Number(id)) && Number(id) > 0
+            ) ||
+            !allowedDurations.includes(Number(durationMinutes))
         ) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid ID or session duration.'
+                message: 'Invalid ID or session duration. Choose 30, 60, 90, or 120 minutes.'
             });
         }
 
-        // 3. Validate the session date
-        const parsedStart = Date.parse(sessionStart);
 
+
+        // 3. Validate the session date
         if (
             typeof sessionStart !== 'string' ||
-            Number.isNaN(parsedStart) ||
+            Number.isNaN(Date.parse(sessionStart)) ||
             !/(Z|[+-]\d{2}:\d{2})$/i.test(sessionStart)
         ) {
             return res.status(400).json({
@@ -282,6 +323,17 @@ router.post('/', authenticateToken, async (req, res) => {
                 message: 'Provide a valid session date with a timezone.'
             });
         }
+
+        const parsedStart = Date.parse(sessionStart);
+
+        // Prevent bookings in the past
+        if (parsedStart <= Date.now()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Session date must be in the future.'
+            });
+        }
+
 
         // 4. Insert booking and retrieve the tutor's actual rate
         const query = `

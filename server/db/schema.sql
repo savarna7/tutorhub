@@ -53,11 +53,31 @@ CREATE TABLE public.bookings (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     session_end timestamp with time zone NOT NULL,
-    CONSTRAINT bookings_duration_minutes_check CHECK ((duration_minutes > 0)),
-    CONSTRAINT bookings_hourly_rate_at_booking_check CHECK ((hourly_rate_at_booking >= (0)::numeric)),
-    CONSTRAINT bookings_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'confirmed'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'rejected'::character varying])::text[])))
-);
 
+    CONSTRAINT bookings_duration_minutes_check
+        CHECK (duration_minutes IN (30, 60, 90, 120)),
+
+    CONSTRAINT bookings_hourly_rate_at_booking_check
+        CHECK (hourly_rate_at_booking >= 0),
+
+    CONSTRAINT bookings_status_check
+        CHECK (
+            status IN (
+                'pending',
+                'confirmed',
+                'completed',
+                'cancelled',
+                'rejected'
+            )
+        ),
+
+    CONSTRAINT bookings_session_time_check
+        CHECK (
+            session_end > session_start
+            AND session_end = session_start
+                + duration_minutes * INTERVAL '1 minute'
+        )
+);
 
 --
 -- Name: bookings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -111,7 +131,12 @@ CREATE TABLE public.students (
     education_level character varying(100),
     learning_goals text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT students_learning_goals_length_check
+        CHECK (
+            learning_goals IS NULL
+            OR CHAR_LENGTH(BTRIM(learning_goals)) <= 1000
+        )
 );
 
 
@@ -164,7 +189,21 @@ CREATE TABLE public.tutors (
     bio text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT tutors_hourly_rate_check CHECK ((hourly_rate >= (0)::numeric))
+
+    CONSTRAINT tutors_hourly_rate_check
+        CHECK (hourly_rate >= 0),
+
+    CONSTRAINT tutors_experience_years_check
+        CHECK (
+            experience_years >= 0
+            AND experience_years <= 60
+        ),
+
+    CONSTRAINT tutors_bio_length_check
+        CHECK (
+            bio IS NULL
+            OR CHAR_LENGTH(BTRIM(bio)) <= 1000
+        )
 );
 
 
