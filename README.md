@@ -2,9 +2,7 @@
 
 TutorHub is a full-stack tutoring marketplace that connects students with tutors. Users can register as students, tutors, or both, discover tutors, manage their profiles, and manage tutoring session bookings.
 
-The project is built with **React, Node.js, Express.js, and PostgreSQL**, with a focus on authentication, role-based access, REST APIs, relational database design, and responsive user interfaces.
-
----
+The project is built with **React, Node.js, Express.js, and PostgreSQL**, with a focus on authentication, role-based access control, REST APIs, relational database design, and responsive user interfaces.
 
 ## Screenshots
 
@@ -27,40 +25,41 @@ The project is built with **React, Node.js, Express.js, and PostgreSQL**, with a
 
 ### Authentication and User Management
 - Student, tutor, and dual-role registration.
-- Secure password hashing using bcrypt.
+- Password hashing using bcrypt.
 - JWT-based authentication with HttpOnly cookies.
-- Session persistence and logout.
+- Session restoration and logout.
 - Protected routes and role-based navigation.
 
 ### Tutor Discovery
 - Browse available tutors.
 - View individual tutor profiles.
-- Search tutors by name, qualification, bio, and subject.
+- Search by name, qualification, bio, and subject.
 - Filter tutors by subject.
 - Sort by hourly rate and teaching experience.
 
 ### Student and Tutor Dashboards
 - Separate dashboards for students and tutors.
-- View booking information and status counts.
+- View bookings and booking status counts.
 - Filter bookings by status.
-- Tutors can manage incoming pending booking requests.
+- Tutors can confirm or reject pending booking requests.
+- Students can cancel eligible bookings.
+- Tutors can cancel confirmed bookings or mark them as completed.
 
 ### Profile Management
-- Update account information.
+- Update shared account information.
 - Manage student profile details.
-- Manage tutor qualifications, experience, hourly rate, and bio.
+- Manage tutor qualifications, experience, hourly rate, bio, and teaching subjects.
 - Request email changes with email verification.
 
 ### Booking System
 - Booking creation API with input validation.
 - Student and tutor booking retrieval.
-- Booking status management.
+- Role-aware booking status transitions.
 - Server-side ownership and authorization checks.
-- Database-level prevention of overlapping tutor bookings.
+- Validation of supported session durations and future booking dates.
+- Database-level prevention of overlapping pending or confirmed tutor bookings.
 
----
-
-## Tech Stack
+## Technology Stack
 
 | Layer | Technologies |
 |---|---|
@@ -68,108 +67,122 @@ The project is built with **React, Node.js, Express.js, and PostgreSQL**, with a
 | Styling | CSS |
 | Backend | Node.js, Express.js |
 | Database | PostgreSQL |
-| Authentication | JWT, bcrypt, HttpOnly Cookies |
+| Authentication | JWT, bcrypt, HttpOnly cookies |
 | Database Driver | node-postgres (`pg`) |
 | Email Service | Resend |
+| Testing | Vitest, Supertest, React Testing Library |
 | Development Tools | VS Code, Git, GitHub |
-
----
 
 ## Project Structure
 
 ```text
 tutorhub/
-│
 ├── client/
 │   └── src/
 │       ├── components/
 │       │   ├── Navbar.jsx
-│       │   └── ProtectedRoute.jsx
-│       │
+│       │   ├── ProtectedRoute.jsx
+│       │   └── ProtectedRoute.test.jsx
 │       ├── context/
-│       │   └── AuthContext.jsx
-│       │
+│       │   ├── AuthContext.js
+│       │   ├── AuthProvider.jsx
+│       │   └── useAuth.js
 │       ├── pages/
 │       │   ├── Login.jsx
 │       │   ├── Register.jsx
 │       │   ├── Tutors.jsx
 │       │   ├── TutorProfile.jsx
 │       │   ├── StudentDashboard.jsx
+│       │   ├── StudentDashboard.test.jsx
 │       │   ├── TutorDashboard.jsx
+│       │   ├── TutorDashboard.test.jsx
 │       │   ├── Profile.jsx
 │       │   └── VerifyEmailChange.jsx
-│       │
 │       ├── services/
 │       │   ├── authService.js
 │       │   ├── bookingService.js
 │       │   ├── profileService.js
 │       │   └── tutorService.js
-│       │
+│       ├── test/
+│       │   └── setup.js
 │       ├── App.jsx
+│       ├── App.test.jsx
 │       ├── App.css
 │       ├── index.css
 │       └── main.jsx
 │
 ├── server/
+│   ├── db/
+│   │   ├── schema.sql
+│   │   └── migrations/
+│   │       ├── 001_add_database_validation_constraints.sql
+│   │       └── 002_add_profile_text_constraints.sql
 │   ├── src/
 │   │   ├── db/
 │   │   │   └── pool.js
-│   │   │
 │   │   ├── middleware/
 │   │   │   └── authMiddleware.js
-│   │   │
 │   │   ├── routes/
 │   │   │   ├── authRoutes.js
 │   │   │   ├── bookingRoutes.js
 │   │   │   ├── profileRoutes.js
 │   │   │   └── tutorRoutes.js
-│   │   │
 │   │   ├── services/
 │   │   │   └── emailService.js
-│   │   │
 │   │   ├── app.js
 │   │   └── server.js
-│   │
+│   ├── tests/
+│   │   ├── app.test.js
+│   │   └── setup.js
 │   ├── .env.example
+│   ├── vitest.config.js
 │   └── package.json
 │
+├── screenshots/
 ├── PROJECT_PROGRESS.md
 ├── README.md
 └── .gitignore
 ```
 
----
-
 ## Database Design
 
-TutorHub uses PostgreSQL with a relational database structure.
-
-The main tables include:
+TutorHub uses PostgreSQL and a relational database structure.
 
 | Table | Purpose |
 |---|---|
-| `users` | Stores common account information |
+| `users` | Stores shared account information |
 | `students` | Stores student-specific information |
 | `tutors` | Stores tutor-specific information |
 | `subjects` | Stores available subjects |
-| `tutor_subjects` | Maps tutors to their subjects |
+| `tutor_subjects` | Maps tutors to their teaching subjects |
 | `bookings` | Stores tutoring session bookings |
 | `email_change_requests` | Manages email-change verification |
 
 ### Multiple-Role Architecture
 
 A single account can have:
-- Student role
-- Tutor role
-- Both student and tutor roles
+- Student role.
+- Tutor role.
+- Both student and tutor roles.
 
-Shared account information is stored in the `users` table, while role-specific information is maintained in the corresponding profile tables.
+Shared account information is stored in `users`, while role-specific information is maintained in the corresponding profile tables.
+
+### Database Constraints and Validation
+
+The database enforces important business rules, including:
+
+- Non-negative tutor hourly rates.
+- Tutor experience between 0 and 60 years.
+- Supported booking durations of 30, 60, 90, or 120 minutes.
+- Booking end times matching the selected duration.
+- Tutor biography and student learning-goal length limits.
+- Valid booking statuses.
 
 ### Booking Conflict Prevention
 
-The database uses PostgreSQL constraints, including an exclusion constraint, to prevent overlapping pending or confirmed bookings for the same tutor.
+PostgreSQL uses the `btree_gist` extension and an exclusion constraint to prevent overlapping pending or confirmed bookings for the same tutor.
 
----
+The booking time range uses `[)`, allowing one session to begin exactly when another session ends.
 
 ## Getting Started
 
@@ -177,26 +190,42 @@ Follow these instructions to run TutorHub locally.
 
 ### Prerequisites
 
-Install the following:
+Install:
 
-- Node.js (the project was developed with Node.js 24)
-- npm
-- PostgreSQL
-- Git
+- Node.js (developed using Node.js 24).
+- npm.
+- PostgreSQL.
+- Git.
 
 ### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/savarna7/tutorhub.git
-
 cd tutorhub
 ```
 
-### 2. Set Up the Backend
+### 2. Set Up the Database
+
+Create a PostgreSQL database:
+
+```sql
+CREATE DATABASE tutorhub;
+```
+
+Initialize the database using the schema file from the project root:
+
+```bash
+psql -h localhost -p 5433 -U your_postgres_username -d tutorhub -v ON_ERROR_STOP=1 -f server/db/schema.sql
+```
+
+The schema file defines the database tables, relationships, indexes, extensions, and constraints.
+
+**Important:** `schema.sql` is the complete baseline schema for a new database. The numbered migration files are incremental changes for databases created from an older schema. Do not apply those migrations again to a database already initialized using the latest schema, because their constraints may already exist.
+
+### 3. Set Up the Backend
 
 ```bash
 cd server
-
 npm install
 ```
 
@@ -206,7 +235,7 @@ Create your environment file:
 cp .env.example .env
 ```
 
-Update the `.env` file with your local configuration:
+Update `server/.env` with your local configuration:
 
 ```env
 PORT=5001
@@ -216,6 +245,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=tutorhub
 DB_USER=your_postgres_username
+DB_PASSWORD=your_postgres_password
 
 JWT_SECRET=your_long_random_secret
 
@@ -224,65 +254,43 @@ RESEND_API_KEY=your_resend_api_key
 CLIENT_URL=http://localhost:5173
 ```
 
-### 3. Set Up PostgreSQL
+Use your own PostgreSQL credentials and a strong, randomly generated JWT secret.
 
-Create a PostgreSQL database named:
-
-```sql
-CREATE DATABASE tutorhub;
-```
-
-Initialize the required tables, relationships, constraints, and PostgreSQL extensions before starting the backend.
-
-**Note:** A database schema or migration script is not currently included in the repository. A reproducible database setup script is a planned improvement.
-
-### 4. Start the Backend
-
-From the `server` directory:
+Start the backend:
 
 ```bash
 npm run dev
 ```
 
-The backend runs at:
+Backend URL:
 
-```text
-http://localhost:5001
-```
+`http://localhost:5001`
 
 API base URL:
 
-```text
-http://localhost:5001/api
-```
+`http://localhost:5001/api`
 
-### 5. Set Up the Frontend
+Health check:
 
-Open another terminal:
+`http://localhost:5001/api/health`
+
+### 4. Set Up the Frontend
+
+Open another terminal from the project root:
 
 ```bash
 cd client
-
 npm install
-```
-
-Start the React development server:
-
-```bash
 npm run dev
 ```
 
-The frontend runs at:
+Frontend URL:
 
-```text
-http://localhost:5173
-```
-
----
+`http://localhost:5173`
 
 ## API Overview
 
-The backend exposes REST API endpoints for the following operations.
+### Authentication
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -290,12 +298,30 @@ The backend exposes REST API endpoints for the following operations.
 | POST | `/api/auth/login` | Authenticate a user |
 | GET | `/api/auth/me` | Retrieve the current session |
 | POST | `/api/auth/logout` | Log out |
+
+### Tutors
+
+| Method | Endpoint | Purpose |
+|---|---|---|
 | GET | `/api/tutors` | Retrieve tutors |
+| GET | `/api/tutors/subjects` | Retrieve available subjects |
 | GET | `/api/tutors/:tutorId` | Retrieve tutor details |
+
+### Bookings
+
+| Method | Endpoint | Purpose |
+|---|---|---|
 | GET | `/api/bookings/student/:studentId` | Retrieve student bookings |
 | GET | `/api/bookings/tutor/:tutorId` | Retrieve tutor bookings |
 | POST | `/api/bookings` | Create a booking |
 | PATCH | `/api/bookings/:bookingId/status` | Update booking status |
+
+Booking status transitions are validated according to the authenticated user's role and the booking's current status.
+
+### Profiles
+
+| Method | Endpoint | Purpose |
+|---|---|---|
 | GET | `/api/profiles/me` | Retrieve the current profile |
 | PUT | `/api/profiles/account` | Update account information |
 | PUT | `/api/profiles/student` | Update student information |
@@ -303,58 +329,138 @@ The backend exposes REST API endpoints for the following operations.
 | POST | `/api/profiles/request-email-change` | Request an email change |
 | POST | `/api/profiles/verify-email-change` | Verify and complete an email change |
 
-Most profile and booking operations require authentication.
+Protected profile and booking operations require authentication.
 
----
+## Testing
 
-## Environment Variables
+TutorHub includes automated backend and frontend test suites.
 
-Never commit your actual `.env` file, database credentials, JWT secrets, or API keys.
+### Backend Tests
+
+Tools:
+- Vitest.
+- Supertest.
+
+Test file: `server/tests/app.test.js`
+
+Coverage includes:
+- Health and database connection endpoints.
+- Registration and authentication.
+- Profile and account management.
+- Booking creation, retrieval, and status transitions.
+- Email-change verification and edge cases.
+- Input validation and authorization.
+- Database constraint behavior.
+
+Run backend tests:
+
+```bash
+cd server
+npm test
+```
+
+### Frontend Tests
+
+Tools:
+- Vitest.
+- React Testing Library.
+- jest-dom.
+- user-event.
+
+Coverage includes:
+- Application rendering.
+- Protected routes and role-based access.
+- Login and registration.
+- Student dashboard behavior.
+- Tutor dashboard behavior.
+
+Run frontend tests:
+
+```bash
+cd client
+npm test
+```
+
+### Latest Automated Test Results
+
+| Test suite | Passing tests |
+|---|---:|
+| Backend | 65 |
+| Frontend | 57 |
+| **Combined total** | **122** |
+
+Latest recorded runs passed all 122 tests.
+
+The frontend production build also completed successfully.
+
+### Additional Quality Checks
+
+Frontend lint:
+
+```bash
+npm run lint --prefix client
+```
+
+Frontend production build:
+
+```bash
+npm run build --prefix client
+```
+
+Frontend dependency audit:
+
+```bash
+npm audit --prefix client
+```
+
+The latest recorded frontend dependency audit reported zero vulnerabilities.
+
+**Backend test safety:** Automated backend tests use a separate PostgreSQL database named `tutorhub_test`. Never configure automated tests to use the development database.
+
+## Environment Variables and Security
+
+Never commit actual `.env` files, database passwords, JWT secrets, or API keys.
 
 The repository includes `server/.env.example` as a configuration template.
 
-Email verification uses Resend. Production email sending requires a verified sending domain and appropriate sender configuration.
+Authentication uses HttpOnly cookies to reduce direct JavaScript access to the JWT.
 
----
+Email verification uses Resend. Production email delivery requires a verified sending domain and appropriate sender configuration.
 
-## Testing and Project Status
+## Current Project Status
 
-The following have been implemented and manually verified in the development environment:
-
-- Multi-role registration and login.
-- Authentication session persistence and logout.
-- Role-based dashboard access.
+### Implemented
+- Multi-role registration and authentication.
+- Student, tutor, and dual-role accounts.
+- Protected routes and role-based navigation.
 - Tutor discovery, search, filtering, and sorting.
-- Profile management.
+- Student and tutor dashboards.
+- Profile management and tutor subject management.
 - Email-change verification.
-- Dashboard booking views and tutor booking actions.
-- Backend health and PostgreSQL connection checks.
-- Backend booking API validation and overlap prevention.
-- Frontend production build.
+- Booking API with authorization and validation.
+- Database-level booking overlap prevention.
+- Booking status transition validation.
+- Automated backend and frontend tests.
+- Database schema and incremental migrations.
 
-### Work in Progress
-
+### Further Work
 - Complete end-to-end booking creation through the React interface.
-- Review the complete cancellation and completion workflow.
-- Automated frontend and backend tests.
-- Production email configuration.
-- Deployment.
+- Broader marketplace workflow testing.
+- Expand frontend automated test coverage.
+- Review remaining security and production-readiness considerations.
+- Configure production email delivery.
+- Deploy the application.
 
-The project is actively being developed. Implemented features are not necessarily fully verified across every end-to-end workflow.
-
----
+TutorHub is an actively developed portfolio project. Passing automated tests does not mean every feature has been verified in a deployed, end-to-end environment.
 
 ## Future Improvements
 
-- Add automated testing.
-- Add database migrations and schema initialization scripts.
-- Complete and refine booking workflows.
-- Improve validation and error handling.
+- Expand automated integration and end-to-end tests.
+- Improve booking and marketplace workflows.
+- Review validation, error handling, and security.
 - Configure production email delivery.
-- Deploy the application.
-- Add application screenshots and a live demo.
-
----
+- Deploy the frontend, backend, and database.
+- Add a live application demo.
 
 ## Author
 
@@ -363,8 +469,6 @@ The project is actively being developed. Implemented features are not necessaril
 B.Tech Computer Science and Engineering Student
 
 GitHub: [@savarna7](https://github.com/savarna7)
-
----
 
 ## Repository
 
