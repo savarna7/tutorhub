@@ -20,7 +20,10 @@ import { getCurrentUser } from './services/authService';
 // Tests will not make real backend API requests.
 vi.mock('./services/authService', () => ({
     getCurrentUser: vi.fn(),
-    logoutUser: vi.fn()
+    logoutUser: vi.fn(),
+    refreshCsrfToken: vi.fn().mockResolvedValue({
+        success: true
+    })
 }));
 
 // Start each test with an unauthenticated user.

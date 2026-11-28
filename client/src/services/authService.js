@@ -1,5 +1,7 @@
+import { getCsrfHeaders } from './csrfService';
+import API_BASE_URL from './apiConfig';
 
-const API_URL = 'http://localhost:5001/api/auth';
+const API_URL = `${API_BASE_URL}/auth`;
 
 // Register a new account
 export const registerUser = async (userData) => {
@@ -57,11 +59,30 @@ export const getCurrentUser = async () => {
     return data;
 };
 
-// Log out and clear the authentication cookie
+// Refresh the CSRF token for the current authenticated session
+export const refreshCsrfToken = async () => {
+    const response = await fetch(`${API_URL}/csrf`, {
+        method: 'GET',
+        credentials: 'include'
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'Could not refresh security token.');
+    }
+
+    return data;
+};
+
+// Log out and clear the authentication and CSRF cookies
 export const logoutUser = async () => {
     const response = await fetch(`${API_URL}/logout`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+            ...getCsrfHeaders()
+        }
     });
 
     const data = await response.json();

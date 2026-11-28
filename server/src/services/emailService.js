@@ -9,7 +9,7 @@ export const sendVerificationEmail = async (to, verificationUrl) => {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const { data, error } = await resend.emails.send({
-        from: 'TutorHub <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || 'TutorHub <onboarding@resend.dev>',
         to: [to],
         subject: 'Verify your new TutorHub email address',
         html: `

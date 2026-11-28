@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import {
     describe,
     it,
@@ -116,6 +116,32 @@ describe('TutorHub API', () => {
         expect(response.body.database).toBe('tutorhub_test');
     });
 
+
+    it('should reject state-changing requests without an Origin header', async () => {
+        const response = await request(app)
+            .post('/api/auth/register')
+            .send({});
+
+        expect(response.status).toBe(403);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe(
+            'Request origin is not allowed.'
+        );
+    });
+
+    it('should reject state-changing requests from an untrusted Origin', async () => {
+        const response = await request(app)
+            .post('/api/auth/register')
+            .set('Origin', 'https://attacker.example')
+            .send({});
+
+        expect(response.status).toBe(403);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toBe(
+            'Request origin is not allowed.'
+        );
+    });
+
 });
 
 describe('User Registration API', () => {
@@ -123,6 +149,7 @@ describe('User Registration API', () => {
     it('should register a Student successfully', async () => {
         const response = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Vitest Student',
                 email: testEmails[0],
@@ -160,6 +187,7 @@ describe('User Registration API', () => {
     it('should register a Tutor with selected subjects', async () => {
         const response = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Vitest Tutor',
                 email: testEmails[1],
@@ -200,6 +228,7 @@ describe('User Registration API', () => {
     it('should register a Both-role account successfully', async () => {
         const response = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Vitest Both',
                 email: testEmails[2],
@@ -250,10 +279,12 @@ describe('User Registration API', () => {
 
         const firstResponse = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send(payload);
 
         const secondResponse = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send(payload);
 
         expect(firstResponse.status).toBe(201);
@@ -271,6 +302,7 @@ describe('User Registration API', () => {
     it('should reject registration with missing student information', async () => {
         const response = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Invalid Student',
                 email: testEmails[4],
@@ -294,6 +326,7 @@ describe('User Registration API', () => {
     it('should reject registration with an invalid subject ID', async () => {
         const response = await request(app)
             .post('/api/auth/register')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Invalid Tutor',
                 email: 'vitest.invalid.subject@tutorhub.local',
@@ -327,6 +360,7 @@ describe('User Authentication API', () => {
     it('should log in with valid credentials', async () => {
         const response = await request(app)
             .post('/api/auth/login')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 email: studentEmail,
                 password: studentPassword
@@ -337,16 +371,28 @@ describe('User Authentication API', () => {
         expect(response.body.user.email).toBe(studentEmail);
         expect(response.body.user.roles).toEqual(['student']);
 
-        const cookie = response.headers['set-cookie'];
+        const cookies = response.headers['set-cookie'];
 
-        expect(cookie).toBeDefined();
-        expect(cookie.join(';')).toContain('token=');
-        expect(cookie.join(';').toLowerCase()).toContain('httponly');
+        const authCookie = cookies.find(cookie =>
+            cookie.startsWith('token=')
+        );
+
+        const csrfCookie = cookies.find(cookie =>
+            cookie.startsWith('csrfToken=')
+        );
+
+        expect(authCookie).toBeDefined();
+        expect(authCookie).toMatch(/HttpOnly/i);
+
+        expect(csrfCookie).toBeDefined();
+        expect(csrfCookie).not.toMatch(/HttpOnly/i);
+        expect(csrfCookie).toMatch(/SameSite=Lax/i);
     });
 
     it('should reject an incorrect password', async () => {
         const response = await request(app)
             .post('/api/auth/login')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 email: studentEmail,
                 password: 'WrongPassword@123'
@@ -359,6 +405,7 @@ describe('User Authentication API', () => {
     it('should reject an unregistered email', async () => {
         const response = await request(app)
             .post('/api/auth/login')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 email: 'unknown@tutorhub.local',
                 password: 'SomePassword@123'
@@ -371,6 +418,7 @@ describe('User Authentication API', () => {
     it('should reject login when email or password is missing', async () => {
         const response = await request(app)
             .post('/api/auth/login')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 email: studentEmail
             });
@@ -380,21 +428,14 @@ describe('User Authentication API', () => {
     });
 
     it('should restore the session using the login cookie', async () => {
-        const loginResponse = await request(app)
-            .post('/api/auth/login')
-            .send({
-                email: studentEmail,
-                password: studentPassword
-            });
-
-        expect(loginResponse.status).toBe(200);
-
-        const cookie = loginResponse.headers['set-cookie'][0]
-            .split(';')[0];
+        const credentials = await getAuthCredentials(
+            studentEmail,
+            studentPassword
+        );
 
         const response = await request(app)
             .get('/api/auth/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -410,32 +451,120 @@ describe('User Authentication API', () => {
         expect(response.body.success).toBe(false);
     });
 
-    it('should log out and clear the authentication cookie', async () => {
-        const response = await request(app)
-            .post('/api/auth/logout');
+    it('should log out and clear both authentication and CSRF cookies', async () => {
+        const credentials = await getAuthCredentials(
+            studentEmail,
+            studentPassword
+        );
+
+        const response = await authenticatedRequest(
+            'post',
+            '/api/auth/logout',
+            credentials
+        );
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
 
-        const cookie = response.headers['set-cookie'];
+        const clearedCookies = response.headers['set-cookie'];
 
-        expect(cookie).toBeDefined();
-        expect(cookie.join(';')).toContain('token=');
-        expect(cookie.join(';').toLowerCase()).toContain('expires=');
+        expect(
+            clearedCookies.some(cookie =>
+                cookie.startsWith('token=') &&
+                /Expires=Thu, 01 Jan 1970/i.test(cookie)
+            )
+        ).toBe(true);
+
+        expect(
+            clearedCookies.some(cookie =>
+                cookie.startsWith('csrfToken=') &&
+                /Expires=Thu, 01 Jan 1970/i.test(cookie)
+            )
+        ).toBe(true);
+    });
+
+    it('should reject logout without a valid CSRF header', async () => {
+        const credentials = await getAuthCredentials(
+            studentEmail,
+            studentPassword
+        );
+
+        const response = await request(app)
+            .post('/api/auth/logout')
+            .set('Origin', 'http://localhost:5173')
+            .set('Cookie', credentials.cookie);
+
+        expect(response.status).toBe(403);
+        expect(response.body.success).toBe(false);
     });
 });
 
-
-async function getAuthCookie(email, password) {
+async function getAuthCredentials(email, password) {
     const response = await request(app)
         .post('/api/auth/login')
+
+        .set('Origin', 'http://localhost:5173')
         .send({ email, password });
 
     if (response.status !== 200) {
         throw new Error(`Login failed for test account: ${email}`);
     }
 
-    return response.headers['set-cookie'][0].split(';')[0];
+    const cookies = response.headers['set-cookie'] || [];
+
+    const authCookie = cookies
+        .find(cookie => cookie.startsWith('token='))
+        ?.split(';')[0];
+
+    const csrfCookie = cookies
+        .find(cookie => cookie.startsWith('csrfToken='))
+        ?.split(';')[0];
+
+    if (!authCookie || !csrfCookie) {
+        throw new Error(
+            'Authentication or CSRF cookie was not returned.'
+        );
+    }
+
+    const authToken = authCookie.substring('token='.length);
+
+    const csrfCookieValue = decodeURIComponent(
+        csrfCookie.substring('csrfToken='.length)
+    );
+
+    const [csrfToken, receivedSignature, ...extraParts] =
+        csrfCookieValue.split('.');
+
+    if (
+        !csrfToken ||
+        !receivedSignature ||
+        extraParts.length > 0
+    ) {
+        throw new Error('The returned CSRF cookie has an invalid format.');
+    }
+
+    const expectedSignature = createHmac(
+        'sha256',
+        process.env.JWT_SECRET
+    )
+        .update(`csrf:${authToken}:${csrfToken}`)
+        .digest('hex');
+
+    if (receivedSignature !== expectedSignature) {
+        throw new Error('The returned CSRF token signature is invalid.');
+    }
+
+    return {
+        cookie: `${authCookie}; ${csrfCookie}`,
+        csrfHeader: csrfToken
+    };
+}
+
+function authenticatedRequest(method, url, credentials) {
+    return request(app)[method](url)
+        .set('Origin', 'http://localhost:5173')
+        .set('Cookie', credentials.cookie)
+        .set('X-CSRF-Token', credentials.csrfHeader);
 }
 
 describe('User Profile API', () => {
@@ -443,14 +572,14 @@ describe('User Profile API', () => {
     const tutorEmail = 'vitest.tutor@tutorhub.local';
 
     it('should fetch the Student profile', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
         const response = await request(app)
             .get('/api/profiles/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -460,14 +589,14 @@ describe('User Profile API', () => {
     });
 
     it('should fetch the Tutor profile and assigned subjects', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
         const response = await request(app)
             .get('/api/profiles/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -484,18 +613,19 @@ describe('User Profile API', () => {
     });
 
     it('should update Student profile information', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/student')
-            .set('Cookie', cookie)
-            .send({
-                educationLevel: 'Postgraduate',
-                learningGoals: 'Master full-stack development through automated testing.'
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/student',
+            credentials
+        ).send({
+            educationLevel: 'Postgraduate',
+            learningGoals: 'Master full-stack development through automated testing.'
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -509,7 +639,7 @@ describe('User Profile API', () => {
         // Verify that the changes persist in the database.
         const profileResponse = await request(app)
             .get('/api/profiles/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(profileResponse.body.profile.education_level).toBe(
             'Postgraduate'
@@ -517,21 +647,22 @@ describe('User Profile API', () => {
     });
 
     it('should update Tutor details and assigned subjects', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/tutor')
-            .set('Cookie', cookie)
-            .send({
-                qualification: 'M.Tech Computer Science',
-                experienceYears: 4.5,
-                hourlyRate: 750,
-                bio: 'Automated testing profile update.',
-                subjectIds: [subjectIds[2]]
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/tutor',
+            credentials
+        ).send({
+            qualification: 'M.Tech Computer Science',
+            experienceYears: 4.5,
+            hourlyRate: 750,
+            bio: 'Automated testing profile update.',
+            subjectIds: [subjectIds[2]]
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -546,7 +677,7 @@ describe('User Profile API', () => {
         // Verify that the changes persist after fetching the profile.
         const profileResponse = await request(app)
             .get('/api/profiles/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(profileResponse.body.profile.bio).toBe(
             'Automated testing profile update.'
@@ -555,93 +686,94 @@ describe('User Profile API', () => {
     });
 
     it('should reject invalid Student profile information', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/student')
-            .set('Cookie', cookie)
-            .send({
-                educationLevel: 'A'.repeat(101),
-                learningGoals: 'This update should be rejected.'
-            });
-
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/student',
+            credentials
+        ).send({
+            educationLevel: 'A'.repeat(101),
+            learningGoals: 'This update should be rejected.'
+        });
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
     });
 
     it('should reject invalid Tutor subject IDs', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/tutor')
-            .set('Cookie', cookie)
-            .send({
-                qualification: 'B.Tech',
-                experienceYears: 2,
-                hourlyRate: 500,
-                bio: 'Invalid subject test.',
-                subjectIds: [99999999]
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/tutor',
+            credentials
+        ).send({
+            qualification: 'B.Tech',
+            experienceYears: 2,
+            hourlyRate: 500,
+            bio: 'Invalid subject test.',
+            subjectIds: [99999999]
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
     });
     it('should reject tutor profile updates with a missing request body', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             'vitest.tutor@tutorhub.local',
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/tutor')
-            .set('Cookie', cookie);
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/tutor',
+            credentials
+        );
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
     });
-    it('should reject learning goals longer than 1000 characters', async () => {
-    const cookie = await getAuthCookie(
-        'vitest.student@tutorhub.local',
-        'StudentTest@123'
-    );
 
-    const response = await request(app)
-        .put('/api/profiles/student')
-        .set('Cookie', cookie)
-        .send({
-            educationLevel: 'College',
+    it('should reject learning goals longer than 1000 characters', async () => {
+        const credentials = await getAuthCredentials(
+            'vitest.student@tutorhub.local',
+            'StudentTest@123'
+        );
+
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/student',
+            credentials
+        ).send({
             learningGoals: 'A'.repeat(1001)
         });
 
-    expect(response.status).toBe(400);
-    expect(response.body.success).toBe(false);
-});
-it('should reject tutor bios longer than 1000 characters', async () => {
-    const cookie = await getAuthCookie(
-        'vitest.tutor@tutorhub.local',
-        'TutorTest@123'
-    );
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+    });
+    it('should reject tutor bios longer than 1000 characters', async () => {
+        const credentials = await getAuthCredentials(
+            'vitest.tutor@tutorhub.local',
+            'TutorTest@123'
+        );
 
-    const response = await request(app)
-        .put('/api/profiles/tutor')
-        .set('Cookie', cookie)
-        .send({
-            qualification: 'B.Tech',
-            experienceYears: 2,
-            hourlyRate: 500,
-            bio: 'A'.repeat(1001),
-            subjectIds: [1]
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/tutor',
+            credentials
+        ).send({
+            bio: 'A'.repeat(1001)
         });
 
-    expect(response.status).toBe(400);
-    expect(response.body.success).toBe(false);
-});
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+    });
 });
 
 
@@ -649,18 +781,19 @@ describe('Account Management API', () => {
     const studentEmail = 'vitest.student@tutorhub.local';
 
     it('should update the account name and phone number', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/account')
-            .set('Cookie', cookie)
-            .send({
-                fullName: 'Updated Vitest Student',
-                phone: '9876543210'
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/account',
+            credentials
+        ).send({
+            fullName: 'Updated Vitest Student',
+            phone: '9876543210'
+        });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -671,7 +804,7 @@ describe('Account Management API', () => {
 
         const profile = await request(app)
             .get('/api/profiles/me')
-            .set('Cookie', cookie);
+            .set('Cookie', credentials.cookie);
 
         expect(profile.body.profile.full_name).toBe(
             'Updated Vitest Student'
@@ -680,36 +813,38 @@ describe('Account Management API', () => {
     });
 
     it('should reject an empty account name', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/account')
-            .set('Cookie', cookie)
-            .send({
-                fullName: '   ',
-                phone: '9876543210'
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/account',
+            credentials
+        ).send({
+            fullName: '   ',
+            phone: '9876543210'
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
     });
 
     it('should reject a phone number longer than 20 characters', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .put('/api/profiles/account')
-            .set('Cookie', cookie)
-            .send({
-                fullName: 'Updated Vitest Student',
-                phone: '1'.repeat(21)
-            });
+        const response = await authenticatedRequest(
+            'put',
+            '/api/profiles/account',
+            credentials
+        ).send({
+            fullName: 'Updated Vitest Student',
+            phone: '1'.repeat(21)
+        });
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);
@@ -718,6 +853,7 @@ describe('Account Management API', () => {
     it('should reject account updates without authentication', async () => {
         const response = await request(app)
             .put('/api/profiles/account')
+            .set('Origin', 'http://localhost:5173')
             .send({
                 fullName: 'Unauthenticated User',
                 phone: '9876543210'
@@ -742,20 +878,21 @@ describe('Booking API', () => {
 
 
     const createTestBooking = async (sessionStart) => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        return request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
-            .send({
-                tutorId: Number(tutorId),
-                subjectId: subjectIds[2],
-                sessionStart,
-                durationMinutes: 60
-            });
+        return authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        ).send({
+            tutorId: Number(tutorId),
+            subjectId: subjectIds[2],
+            sessionStart,
+            durationMinutes: 60
+        });
     };
 
 
@@ -785,21 +922,21 @@ describe('Booking API', () => {
     });
 
     it('should create a booking successfully', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
-            .send({
-                tutorId: Number(tutorId),
-                subjectId: subjectIds[2],
-                sessionStart: firstSession,
-                durationMinutes: 60
-            });
-
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        ).send({
+            tutorId: Number(tutorId),
+            subjectId: subjectIds[2],
+            sessionStart: firstSession,
+            durationMinutes: 60
+        });
         expect(response.status).toBe(201);
         expect(response.body.success).toBe(true);
         expect(response.body.booking.status).toBe('pending');
@@ -811,43 +948,44 @@ describe('Booking API', () => {
     });
 
     it('should reject an overlapping booking for the same tutor', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
-            .send({
-                tutorId: Number(tutorId),
-                subjectId: subjectIds[2],
-                sessionStart: firstSession,
-                durationMinutes: 60
-            });
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        ).send({
+            tutorId: Number(tutorId),
+            subjectId: subjectIds[2],
+            sessionStart: firstSession,
+            durationMinutes: 60
+        });
 
         expect(response.status).toBe(409);
         expect(response.body.success).toBe(false);
     });
 
     it('should allow the student and tutor to view their bookings', async () => {
-        const studentCookie = await getAuthCookie(
+        const studentCredentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const tutorCookie = await getAuthCookie(
+        const tutorCredentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
         const studentResponse = await request(app)
             .get(`/api/bookings/student/${studentId}`)
-            .set('Cookie', studentCookie);
+            .set('Cookie', studentCredentials.cookie);
 
         const tutorResponse = await request(app)
             .get(`/api/bookings/tutor/${tutorId}`)
-            .set('Cookie', tutorCookie);
+            .set('Cookie', tutorCredentials.cookie);
 
         expect(studentResponse.status).toBe(200);
         expect(studentResponse.body.count).toBe(1);
@@ -859,90 +997,94 @@ describe('Booking API', () => {
     });
 
     it('should prevent users from viewing another role account bookings', async () => {
-        const studentCookie = await getAuthCookie(
+        const studentCredentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const tutorCookie = await getAuthCookie(
+        const tutorCredentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
         const studentAccess = await request(app)
             .get(`/api/bookings/tutor/${tutorId}`)
-            .set('Cookie', studentCookie);
+            .set('Cookie', studentCredentials.cookie);
 
         const tutorAccess = await request(app)
             .get(`/api/bookings/student/${studentId}`)
-            .set('Cookie', tutorCookie);
+            .set('Cookie', tutorCredentials.cookie);
 
         expect(studentAccess.status).toBe(403);
         expect(tutorAccess.status).toBe(403);
     });
 
     it('should prevent a student from creating a booking', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
-            .send({
-                tutorId: Number(tutorId),
-                subjectId: subjectIds[2],
-                sessionStart: secondSession,
-                durationMinutes: 60
-            });
-
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        ).send({
+            tutorId: Number(tutorId),
+            subjectId: subjectIds[2],
+            sessionStart: secondSession,
+            durationMinutes: 60
+        });
         expect(response.status).toBe(403);
     });
 
     it('should reject a session date without a timezone', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
-            .send({
-                tutorId: Number(tutorId),
-                subjectId: subjectIds[2],
-                sessionStart: '2030-06-15T10:00:00',
-                durationMinutes: 60
-            });
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        ).send({
+            tutorId: Number(tutorId),
+            subjectId: subjectIds[2],
+            sessionStart: '2030-06-15T10:00:00',
+            durationMinutes: 60
+        });
 
         expect(response.status).toBe(400);
     });
 
     it('should prevent a student from changing booking status', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${bookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'confirmed' });
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${bookingId}/status`,
+            credentials
+        ).send({ status: 'confirmed' });
 
         expect(response.status).toBe(404);
+        expect(response.body.success).toBe(false);
     });
 
     it('should allow the tutor to confirm a pending booking', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${bookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'confirmed' });
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${bookingId}/status`,
+            credentials
+        ).send({ status: 'confirmed' });
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
@@ -951,31 +1093,32 @@ describe('Booking API', () => {
 
 
     it('should allow the student to cancel a confirmed booking', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${bookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'cancelled' });
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${bookingId}/status`,
+            credentials
+        ).send({ status: 'cancelled' });
 
         expect(response.status).toBe(200);
         expect(response.body.booking.status).toBe('cancelled');
     });
 
     it('should not allow a terminal booking status to be changed', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${bookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'completed' });
-
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${bookingId}/status`,
+            credentials
+        ).send({ status: 'completed' });
         expect(response.status).toBe(404);
     });
 
@@ -988,15 +1131,16 @@ describe('Booking API', () => {
 
         const secondBookingId = createResponse.body.booking.id;
 
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${secondBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'rejected' });
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${secondBookingId}/status`,
+            credentials
+        ).send({ status: 'rejected' });
 
         expect(response.status).toBe(200);
         expect(response.body.booking.status).toBe('rejected');
@@ -1011,15 +1155,16 @@ describe('Booking API', () => {
 
         const newBookingId = createResponse.body.booking.id;
 
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'cancelled' });
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'cancelled' });
 
         expect(response.status).toBe(200);
         expect(response.body.booking.status).toBe('cancelled');
@@ -1034,26 +1179,29 @@ describe('Booking API', () => {
 
         const newBookingId = createResponse.body.booking.id;
 
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const confirmResponse = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'confirmed' });
+        const confirmResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'confirmed' });
 
         expect(confirmResponse.status).toBe(200);
 
-        const cancelResponse = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'cancelled' });
+        const cancelResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'cancelled' });
 
         expect(cancelResponse.status).toBe(200);
         expect(cancelResponse.body.booking.status).toBe('cancelled');
     });
+
 
     it('should allow the tutor to mark a confirmed booking as completed', async () => {
         const createResponse = await createTestBooking(
@@ -1064,26 +1212,84 @@ describe('Booking API', () => {
 
         const newBookingId = createResponse.body.booking.id;
 
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             tutorEmail,
             'TutorTest@123'
         );
 
-        const confirmResponse = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'confirmed' });
+        const confirmResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'confirmed' });
 
         expect(confirmResponse.status).toBe(200);
 
-        const completeResponse = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'completed' });
+        // Move the test booking into the past.
+        // This changes only the test database record.
+        await pool.query(
+            `UPDATE bookings
+         SET
+             session_end = CURRENT_TIMESTAMP - INTERVAL '1 minute',
+             session_start = CURRENT_TIMESTAMP
+                 - (duration_minutes + 1) * INTERVAL '1 minute'
+         WHERE id = $1`,
+            [newBookingId]
+        );
+
+        const completeResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'completed' });
 
         expect(completeResponse.status).toBe(200);
         expect(completeResponse.body.booking.status).toBe('completed');
     });
+
+
+    it('should prevent the tutor from completing a future confirmed booking', async () => {
+        const createResponse = await createTestBooking(
+            '2030-06-15T18:00:00.000Z'
+        );
+
+        expect(createResponse.status).toBe(201);
+
+        const newBookingId = createResponse.body.booking.id;
+
+        const credentials = await getAuthCredentials(
+            tutorEmail,
+            'TutorTest@123'
+        );
+
+        const confirmResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'confirmed' });
+
+        expect(confirmResponse.status).toBe(200);
+
+        const completeResponse = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'completed' });
+        expect(completeResponse.status).toBe(409);
+        expect(completeResponse.body.success).toBe(false);
+        expect(completeResponse.body.message).toBe(
+            'This session cannot be marked as completed before its scheduled end time.'
+        );
+
+        // Verify that the booking remains confirmed.
+        const bookingResult = await pool.query(
+            'SELECT status FROM bookings WHERE id = $1',
+            [newBookingId]
+        );
+
+        expect(bookingResult.rows[0].status).toBe('confirmed');
+    });
+
 
     it('should not allow a student to reject a pending booking', async () => {
         const createResponse = await createTestBooking(
@@ -1094,29 +1300,31 @@ describe('Booking API', () => {
 
         const newBookingId = createResponse.body.booking.id;
 
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${newBookingId}/status`)
-            .set('Cookie', cookie)
-            .send({ status: 'rejected' });
-
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${newBookingId}/status`,
+            credentials
+        ).send({ status: 'rejected' });
         expect(response.status).toBe(404);
     });
 
 
     it('should reject a booking with missing required fields', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.student@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: Number(tutorId),
                 subjectId: subjectIds[2]
@@ -1126,14 +1334,16 @@ describe('Booking API', () => {
     });
 
     it('should reject an invalid tutor ID', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.student@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: 0,
                 subjectId: subjectIds[2],
@@ -1145,14 +1355,16 @@ describe('Booking API', () => {
     });
 
     it('should reject an invalid session duration', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.student@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: Number(tutorId),
                 subjectId: subjectIds[2],
@@ -1165,14 +1377,16 @@ describe('Booking API', () => {
 
 
     it('should reject unsupported session durations', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: Number(tutorId),
                 subjectId: subjectIds[2],
@@ -1184,14 +1398,16 @@ describe('Booking API', () => {
     });
 
     it('should reject a booking with a past session date', async () => {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: Number(tutorId),
                 subjectId: subjectIds[2],
@@ -1204,14 +1420,16 @@ describe('Booking API', () => {
 
 
     it('should reject a subject the tutor does not teach', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.student@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            studentEmail,
             'StudentTest@123'
         );
 
-        const response = await request(app)
-            .post('/api/bookings')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'post',
+            '/api/bookings',
+            credentials
+        )
             .send({
                 tutorId: Number(tutorId),
                 subjectId: subjectIds[0],
@@ -1223,28 +1441,32 @@ describe('Booking API', () => {
     });
 
     it('should reject an invalid booking ID when updating status', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.tutor@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .patch('/api/bookings/invalid/status')
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'patch',
+            '/api/bookings/invalid-id/status',
+            credentials
+        )
             .send({ status: 'confirmed' });
 
         expect(response.status).toBe(400);
     });
 
     it('should reject an unsupported booking status', async () => {
-        const cookie = await getAuthCookie(
-            'vitest.tutor@tutorhub.local',
+        const credentials = await getAuthCredentials(
+            tutorEmail,
             'TutorTest@123'
         );
 
-        const response = await request(app)
-            .patch(`/api/bookings/${bookingId}/status`)
-            .set('Cookie', cookie)
+        const response = await authenticatedRequest(
+            'patch',
+            `/api/bookings/${bookingId}/status`,
+            credentials
+        )
             .send({ status: 'pending' });
 
         expect(response.status).toBe(400);
@@ -1253,20 +1475,22 @@ describe('Booking API', () => {
 });
 
 
+
 describe('Email Change API', () => {
     const studentEmail = 'vitest.student@tutorhub.local';
     const studentPassword = 'StudentTest@123';
 
     async function createEmailChangeRequest(newEmail) {
-        const cookie = await getAuthCookie(
+        const credentials = await getAuthCredentials(
             studentEmail,
             studentPassword
         );
 
-        return request(app)
-            .post('/api/profiles/request-email-change')
-            .set('Cookie', cookie)
-            .send({ newEmail });
+        return authenticatedRequest(
+            'post',
+            '/api/profiles/request-email-change',
+            credentials
+        ).send({ newEmail });
     }
 
     function getVerificationToken() {
@@ -1278,6 +1502,7 @@ describe('Email Change API', () => {
     it('should reject email change requests without authentication', async () => {
         const response = await request(app)
             .post('/api/profiles/request-email-change')
+            .set('Origin', 'http://localhost:5173')
             .send({ newEmail: 'new.email@example.com' });
 
         expect(response.status).toBe(401);
@@ -1405,6 +1630,7 @@ describe('Email Change API', () => {
 
         const verificationResponse = await request(app)
             .post('/api/profiles/verify-email-change')
+            .set('Origin', 'http://localhost:5173')
             .send({ token });
 
         expect(verificationResponse.status).toBe(400);
@@ -1431,6 +1657,7 @@ describe('Email Change API', () => {
         for (const token of invalidTokens) {
             const response = await request(app)
                 .post('/api/profiles/verify-email-change')
+                .set('Origin', 'http://localhost:5173')
                 .send({ token });
 
             expect(response.status).toBe(400);
@@ -1440,16 +1667,17 @@ describe('Email Change API', () => {
     it('should prevent another user from reserving an already pending email', async () => {
         const newEmail = 'vitest.reserved@tutorhub.local';
 
-        const tutorCookie = await getAuthCookie(
+        const tutorCredentials = await getAuthCredentials(
             'vitest.tutor@tutorhub.local',
             'TutorTest@123'
         );
 
         // The tutor reserves the new email first.
-        const firstResponse = await request(app)
-            .post('/api/profiles/request-email-change')
-            .set('Cookie', tutorCookie)
-            .send({ newEmail });
+        const firstResponse = await authenticatedRequest(
+            'post',
+            '/api/profiles/request-email-change',
+            tutorCredentials
+        ).send({ newEmail });
 
         expect(firstResponse.status).toBe(200);
 
@@ -1464,27 +1692,29 @@ describe('Email Change API', () => {
     it('should prevent two users from reserving the same email concurrently', async () => {
         const newEmail = 'vitest.concurrent@tutorhub.local';
 
-        const studentCookie = await getAuthCookie(
+        const studentCredentials = await getAuthCredentials(
             studentEmail,
             studentPassword
         );
 
-        const tutorCookie = await getAuthCookie(
+        const tutorCredentials = await getAuthCredentials(
             'vitest.tutor@tutorhub.local',
             'TutorTest@123'
         );
 
         // Both users attempt to reserve the same email simultaneously.
         const [studentResponse, tutorResponse] = await Promise.all([
-            request(app)
-                .post('/api/profiles/request-email-change')
-                .set('Cookie', studentCookie)
-                .send({ newEmail }),
+            authenticatedRequest(
+                'post',
+                '/api/profiles/request-email-change',
+                studentCredentials
+            ).send({ newEmail }),
 
-            request(app)
-                .post('/api/profiles/request-email-change')
-                .set('Cookie', tutorCookie)
-                .send({ newEmail })
+            authenticatedRequest(
+                'post',
+                '/api/profiles/request-email-change',
+                tutorCredentials
+            ).send({ newEmail })
         ]);
 
         const statuses = [
@@ -1538,6 +1768,7 @@ describe('Email Change API', () => {
         // The old verification link must no longer work.
         const oldTokenResponse = await request(app)
             .post('/api/profiles/verify-email-change')
+            .set('Origin', 'http://localhost:5173')
             .send({ token: oldToken });
 
         expect(oldTokenResponse.status).toBe(400);
@@ -1567,6 +1798,7 @@ describe('Email Change API', () => {
 
         const verificationResponse = await request(app)
             .post('/api/profiles/verify-email-change')
+            .set('Origin', 'http://localhost:5173')
             .send({ token });
 
         expect(verificationResponse.status).toBe(200);
@@ -1593,13 +1825,15 @@ describe('Email Change API', () => {
         // A verification token must not be reusable.
         const reuseResponse = await request(app)
             .post('/api/profiles/verify-email-change')
+            .set('Origin', 'http://localhost:5173')
             .send({ token });
 
         expect(reuseResponse.status).toBe(400);
     });
     it('should reject email verification with a missing request body', async () => {
         const response = await request(app)
-            .post('/api/profiles/verify-email-change');
+            .post('/api/profiles/verify-email-change')
+            .set('Origin', 'http://localhost:5173');
 
         expect(response.status).toBe(400);
         expect(response.body.success).toBe(false);

@@ -1,4 +1,4 @@
-
+import csrfProtection from '../middleware/csrfMiddleware.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import authenticateToken from '../middleware/authMiddleware.js';
@@ -139,7 +139,7 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
 
 
 // PATCH the status of a booking
-router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
+router.patch('/:bookingId/status', authenticateToken, csrfProtection, async (req, res) => {
     try {
         const { bookingId } = req.params;
         const { status } = req.body || {};
@@ -177,7 +177,7 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
          * pending   -> confirmed
          * pending   -> rejected
          * confirmed -> cancelled
-         * confirmed -> completed
+         * confirmed -> completed (only after session_end)
          *
          * Student:
          * pending   -> cancelled
@@ -198,7 +198,11 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
                                 AND $1 IN ('confirmed', 'rejected'))
                             OR
                             (status = 'confirmed'
-                                AND $1 IN ('cancelled', 'completed'))
+                                AND $1 IN ('cancelled', 'completed')
+                                AND (
+                                    $1 <> 'completed'
+                                    OR session_end <= CURRENT_TIMESTAMP
+                                ))
                         )
                     )
                     OR
@@ -218,13 +222,35 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
         ]);
 
         if (result.rowCount === 0) {
+            // Give a specific response for premature completion attempts.
+            if (status === 'completed') {
+                const bookingCheck = await pool.query(
+                    `SELECT session_end > CURRENT_TIMESTAMP AS is_future
+                     FROM bookings
+                     WHERE id = $1
+                       AND tutor_id = $2
+                       AND status = 'confirmed'`,
+                    [Number(bookingId), req.user.id]
+                );
+
+                if (
+                    bookingCheck.rowCount > 0 &&
+                    bookingCheck.rows[0].is_future
+                ) {
+                    return res.status(409).json({
+                        success: false,
+                        message: 'This session cannot be marked as completed before its scheduled end time.'
+                    });
+                }
+            }
+
             return res.status(404).json({
                 success: false,
                 message: 'Booking not found or this status transition is not allowed.'
             });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             message: `Booking ${status} successfully.`,
             booking: result.rows[0]
@@ -233,7 +259,7 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error updating booking status:', error.message);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: 'Failed to update booking status.'
         });
@@ -243,8 +269,9 @@ router.patch('/:bookingId/status', authenticateToken, async (req, res) => {
 
 
 
+
 // POST a new booking
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, csrfProtection, async (req, res) => {
     try {
         if (
             !req.body ||

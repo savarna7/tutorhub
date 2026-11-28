@@ -1,12 +1,15 @@
+import { getCsrfHeaders } from './csrfService';
+import API_BASE_URL from './apiConfig';
 
-const API_URL = 'http://localhost:5001/api/bookings';
+const API_URL = `${API_BASE_URL}/bookings`;
 
 // Create a new booking
 export const createBooking = async (bookingData) => {
     const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         credentials: 'include',
         body: JSON.stringify(bookingData)
@@ -59,7 +62,8 @@ export const updateBookingStatus = async (bookingId, status) => {
     const response = await fetch(`${API_URL}/${bookingId}/status`, {
         method: 'PATCH',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         credentials: 'include',
         body: JSON.stringify({ status })

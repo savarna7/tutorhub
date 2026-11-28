@@ -1,5 +1,7 @@
 
-const API_URL = 'http://localhost:5001/api/tutors';
+import API_BASE_URL from './apiConfig';
+
+const API_URL = `${API_BASE_URL}/tutors`;
 
 export const getTutors = async () => {
     const response = await fetch(API_URL);

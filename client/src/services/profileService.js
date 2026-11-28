@@ -1,5 +1,7 @@
+import { getCsrfHeaders } from './csrfService';
+import API_BASE_URL from './apiConfig';
 
-const API_URL = 'http://localhost:5001/api/profiles';
+const API_URL = `${API_BASE_URL}/profiles`;
 
 // Fetch the logged-in user's complete profile
 export const getMyProfile = async () => {
@@ -23,7 +25,8 @@ export const updateAccount = async (accountData) => {
         method: 'PUT',
         credentials: 'include',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         body: JSON.stringify(accountData)
     });
@@ -43,7 +46,8 @@ export const updateStudentProfile = async (studentData) => {
         method: 'PUT',
         credentials: 'include',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         body: JSON.stringify(studentData)
     });
@@ -63,7 +67,8 @@ export const updateTutorProfile = async (tutorData) => {
         method: 'PUT',
         credentials: 'include',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         body: JSON.stringify(tutorData)
     });
@@ -84,7 +89,8 @@ export const requestEmailChange = async (newEmail) => {
         method: 'POST',
         credentials: 'include',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders()
         },
         body: JSON.stringify({ newEmail })
     });

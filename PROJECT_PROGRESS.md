@@ -1,6 +1,55 @@
 # TutorHub — Project Progress & Handoff
 
-**Last updated: 24 November 2026**
+
+## Latest Update — 27 November 2026
+
+### Git status
+- Current branch: `main`.
+- Latest pushed commit: `37cd9e0` — Update project documentation and environment template.
+- Local branch is currently up to date with `origin/main`.
+- Security hardening and API configuration changes are currently uncommitted.
+- Do not stage, commit, or push these changes without explicit approval.
+
+### Security improvements implemented
+- Added CSRF protection using a signed double-submit cookie.
+- Added request-origin validation for unsafe HTTP methods.
+- Added rate limiting for registration, login, email-change requests, and email verification.
+- Added automated tests for CSRF middleware and rate limiters.
+- Updated backend dependencies and resolved the reported dependency vulnerabilities.
+
+### Frontend API configuration
+- Added a shared API base URL configuration in `client/src/services/apiConfig.js`.
+- Updated authentication, booking, profile, and tutor services to use the shared configuration.
+- Added `client/.env.example` with the local API URL.
+- Preserved cookie credentials on authenticated requests.
+
+### Latest verified checks
+| Check | Result |
+|---|---|
+| Backend automated tests | 72/72 passing |
+| Frontend automated tests | 58/58 passing |
+| Combined tests | 130/130 passing |
+| Frontend lint | Passed |
+| Frontend production build | Passed |
+| Backend dependency audit | 0 vulnerabilities |
+| Frontend dependency audit | 0 vulnerabilities |
+
+These results reflect the latest recorded successful runs, not a guarantee that every production workflow has been verified.
+
+### Deployment status
+- Planned frontend: Vercel.
+- Planned backend: Render.
+- Planned PostgreSQL hosting: Neon.
+- Deployment has not started.
+- Production database, environment variables, cookie behavior, and email delivery still need configuration and verification.
+
+### Immediate priorities
+1. Update the README with the latest implementation and test results.
+2. Update the remaining outdated sections of this progress document.
+3. Review all local code and documentation changes.
+4. Run final verification checks.
+5. Request explicit approval before staging, committing, or pushing.
+6. Begin deployment preparation only after the Git and documentation review.
 
 ## 1. Project Overview
 

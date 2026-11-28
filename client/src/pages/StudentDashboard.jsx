@@ -118,7 +118,7 @@ function StudentDashboard() {
             <div className="dashboard-heading">
                 <div>
                     <p className="profile-eyebrow">STUDENT DASHBOARD</p>
-                    <h1>Welcome, {user.full_name}!</h1>
+                    <h1>Welcome, {user.fullName}!</h1>
                     <p>Manage your learning sessions in one place.</p>
                 </div>
 

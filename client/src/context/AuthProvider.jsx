@@ -1,3 +1,4 @@
+
 import {
     useEffect,
     useState
@@ -7,7 +8,8 @@ import { AuthContext } from './AuthContext';
 
 import {
     getCurrentUser,
-    logoutUser
+    logoutUser,
+    refreshCsrfToken
 } from '../services/authService';
 
 function AuthProvider({ children }) {
@@ -19,7 +21,18 @@ function AuthProvider({ children }) {
         const restoreSession = async () => {
             try {
                 const data = await getCurrentUser();
+
                 setUser(data.user);
+
+                // Always refresh the CSRF token for this session.
+                try {
+                    await refreshCsrfToken();
+                } catch (error) {
+                    console.error(
+                        'CSRF token refresh failed:',
+                        error.message
+                    );
+                }
             } catch {
                 setUser(null);
             } finally {
@@ -35,6 +48,7 @@ function AuthProvider({ children }) {
         setUser(userData);
     };
 
+    // Refresh the current user's information.
     const refreshUser = async () => {
         try {
             const data = await getCurrentUser();
@@ -46,13 +60,12 @@ function AuthProvider({ children }) {
         }
     };
 
-    // Log out from the backend and clear frontend state.
+    // Log out only after the backend confirms success.
     const logout = async () => {
-        try {
-            await logoutUser();
-        } finally {
-            setUser(null);
-        }
+        await refreshCsrfToken();
+        await logoutUser();
+
+        setUser(null);
     };
 
     return (

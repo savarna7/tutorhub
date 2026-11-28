@@ -1,12 +1,25 @@
-
+import { createRateLimiter } from '../middleware/rateLimiters.js';
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/pool.js';
 import authenticateToken from '../middleware/authMiddleware.js';
+import csrfProtection, {
+    generateCsrfToken
+} from '../middleware/csrfMiddleware.js';
 
 const router = express.Router();
+const registerLimiter = createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    message: 'Too many registration attempts. Please try again later.'
+});
 
+const loginLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    message: 'Too many login attempts. Please try again later.'
+});
 const getCookieOptions = () => ({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -15,9 +28,16 @@ const getCookieOptions = () => ({
     path: '/'
 });
 
+const getCsrfCookieOptions = () => ({
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 1000,
+    path: '/'
+});
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
     if (
         !req.body ||
         typeof req.body !== 'object' ||
@@ -346,7 +366,7 @@ router.post('/register', async (req, res) => {
 
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body || {};
 
@@ -422,7 +442,17 @@ router.post('/login', async (req, res) => {
             }
         );
 
+        // Set the authentication cookie
         res.cookie('token', token, getCookieOptions());
+
+        // Generate and set a session-bound CSRF cookie
+        const csrfToken = generateCsrfToken(token);
+
+        res.cookie(
+            'csrfToken',
+            csrfToken,
+            getCsrfCookieOptions()
+        );
 
         return res.status(200).json({
             success: true,
@@ -505,19 +535,60 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 });
 
-// POST /api/auth/logout
-router.post('/logout', (req, res) => {
-    res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/'
-    });
+// GET /api/auth/csrf
+// Refresh the CSRF cookie for the current authenticated session
+router.get('/csrf', authenticateToken, (req, res) => {
+    try {
+        const authToken = req.cookies?.token;
 
-    return res.status(200).json({
-        success: true,
-        message: 'Logged out successfully.'
-    });
+        const csrfToken = generateCsrfToken(authToken);
+
+        res.cookie(
+            'csrfToken',
+            csrfToken,
+            getCsrfCookieOptions()
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'CSRF token refreshed.'
+        });
+
+    } catch (error) {
+        console.error('CSRF token generation error:', error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Could not refresh CSRF token.'
+        });
+    }
 });
+
+// POST /api/auth/logout
+router.post(
+    '/logout',
+    authenticateToken,
+    csrfProtection,
+    (req, res) => {
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/'
+        });
+
+        res.clearCookie('csrfToken', {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/'
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Logged out successfully.'
+        });
+    }
+);
 
 export default router;

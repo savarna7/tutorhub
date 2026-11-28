@@ -53,6 +53,7 @@ const mockBookings = [
         subject_name: 'Physics',
         status: 'confirmed',
         session_start: '2026-12-02T11:00:00',
+        session_end: '2026-12-02T12:30:00',
         duration_minutes: 90,
         hourly_rate_at_booking: '800.00'
     },
@@ -100,7 +101,7 @@ beforeEach(() => {
     useAuth.mockReturnValue({
         user: {
             id: 20,
-            full_name: 'Test Tutor'
+            fullName: 'Test Tutor'
         }
     });
 
@@ -418,13 +419,28 @@ describe('TutorDashboard', () => {
         ).toHaveLength(2);
     });
 
-    it('should mark a confirmed booking as completed', async () => {
+
+    it('should mark an ended confirmed booking as completed', async () => {
         const user = userEvent.setup();
 
         updateBookingStatus.mockResolvedValue({
             booking_id: 2,
             status: 'completed'
         });
+
+        // Simulate a session that has already ended.
+        getTutorBookings.mockResolvedValue(
+            mockBookings.map((booking) =>
+                booking.booking_id === 2
+                    ? {
+                        ...booking,
+                        session_end: new Date(
+                            Date.now() - 60_000
+                        ).toISOString()
+                    }
+                    : booking
+            )
+        );
 
         renderTutorDashboard();
 
@@ -449,6 +465,27 @@ describe('TutorDashboard', () => {
             ).toBeInTheDocument();
         });
     });
+
+
+it('should hide the completion button for a future confirmed booking', async () => {
+    renderTutorDashboard();
+
+    await screen.findByText('Sarah Student');
+
+    expect(
+        screen.queryByRole('button', {
+            name: 'Mark as Completed'
+        })
+    ).not.toBeInTheDocument();
+
+    expect(
+        screen.getByRole('button', {
+            name: 'Cancel Session'
+        })
+    ).toBeInTheDocument();
+});
+
+
 
     it('should cancel a confirmed booking successfully', async () => {
         const user = userEvent.setup();

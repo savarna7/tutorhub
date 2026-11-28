@@ -1,4 +1,5 @@
-
+import { createRateLimiter } from '../middleware/rateLimiters.js';
+import csrfProtection from '../middleware/csrfMiddleware.js';
 import express from 'express';
 import pool from '../db/pool.js';
 import authenticateToken from '../middleware/authMiddleware.js';
@@ -6,6 +7,17 @@ import { randomBytes, createHash } from 'crypto';
 import { sendVerificationEmail } from '../services/emailService.js';
 
 const router = express.Router();
+const emailChangeLimiter = createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+    message: 'Too many email change requests. Please try again later.'
+});
+
+const emailVerificationLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    message: 'Too many email verification attempts. Please try again later.'
+});
 
 // GET /api/profiles/me
 // Fetch the logged-in user's account and profile information
@@ -82,7 +94,7 @@ router.get('/me', authenticateToken, async (req, res) => {
 
 // PUT /api/profiles/tutor
 // Update tutor details and selected subjects
-router.put('/tutor', authenticateToken, async (req, res) => {
+router.put('/tutor', authenticateToken, csrfProtection, async (req, res) => {
     const {
         qualification,
         experienceYears,
@@ -271,7 +283,7 @@ router.put('/tutor', authenticateToken, async (req, res) => {
 
 // PUT /api/profiles/student
 // Update the logged-in user's student profile
-router.put('/student', authenticateToken, async (req, res) => {
+router.put('/student', authenticateToken, csrfProtection, async (req, res) => {
     try {
         const { educationLevel, learningGoals } = req.body;
 
@@ -332,7 +344,7 @@ router.put('/student', authenticateToken, async (req, res) => {
 
 // PUT /api/profiles/account
 // Update the logged-in user's basic account details
-router.put('/account', authenticateToken, async (req, res) => {
+router.put('/account', authenticateToken, csrfProtection, async (req, res) => {
     try {
         const { fullName, phone } = req.body;
 
@@ -399,7 +411,7 @@ router.put('/account', authenticateToken, async (req, res) => {
 
 // POST /api/profiles/request-email-change
 // Request a change to the logged-in user's email address
-router.post('/request-email-change', authenticateToken, async (req, res) => {
+router.post('/request-email-change', authenticateToken, csrfProtection, emailChangeLimiter, async (req, res) => {
     const { newEmail } = req.body ?? {};
 
     if (
@@ -575,7 +587,7 @@ router.post('/request-email-change', authenticateToken, async (req, res) => {
 
 // POST /api/profiles/verify-email-change
 // Verify the token and update the user's email address
-router.post('/verify-email-change', async (req, res) => {
+router.post('/verify-email-change', emailVerificationLimiter, async (req, res) => {
     const { token } = req.body ?? {};
 
     if (

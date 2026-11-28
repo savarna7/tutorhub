@@ -100,7 +100,7 @@ beforeEach(() => {
     useAuth.mockReturnValue({
         user: {
             id: 10,
-            full_name: 'Test Student'
+            fullName: 'Test Student'
         }
     });
 

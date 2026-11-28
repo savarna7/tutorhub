@@ -17,6 +17,7 @@ function TutorDashboard() {
     const [updatingBookingId, setUpdatingBookingId] = useState(null);
     const [actionError, setActionError] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+    const [currentTime, setCurrentTime] = useState(() => Date.now());
 
     useEffect(() => {
         const fetchBookings = async () => {
@@ -32,6 +33,14 @@ function TutorDashboard() {
 
         fetchBookings();
     }, [user.id]);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(Date.now());
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, []);
 
     const pendingCount = bookings.filter(
         (booking) => booking.status === 'pending'
@@ -119,7 +128,7 @@ function TutorDashboard() {
             <div className="dashboard-heading">
                 <div>
                     <p className="profile-eyebrow">TUTOR DASHBOARD</p>
-                    <h1>Welcome, {user.full_name}!</h1>
+                    <h1>Welcome, {user.fullName}!</h1>
                     <p>Manage your student booking requests.</p>
                 </div>
             </div>
@@ -300,20 +309,23 @@ function TutorDashboard() {
                                 )}
                                 {booking.status === 'confirmed' && (
                                     <div className="booking-actions">
-                                        <button
-                                            className="accept-booking-button"
-                                            onClick={() =>
-                                                handleBookingAction(
-                                                    booking.booking_id,
-                                                    'completed'
-                                                )
-                                            }
-                                            disabled={updatingBookingId !== null}
-                                        >
-                                            {updatingBookingId === booking.booking_id
-                                                ? 'Updating...'
-                                                : 'Mark as Completed'}
-                                        </button>
+
+                                        {new Date(booking.session_end).getTime() <= currentTime && (
+                                            <button
+                                                className="accept-booking-button"
+                                                onClick={() =>
+                                                    handleBookingAction(
+                                                        booking.booking_id,
+                                                        'completed'
+                                                    )
+                                                }
+                                                disabled={updatingBookingId !== null}
+                                            >
+                                                {updatingBookingId === booking.booking_id
+                                                    ? 'Updating...'
+                                                    : 'Mark as Completed'}
+                                            </button>
+                                        )}
 
                                         <button
                                             className="reject-booking-button"
@@ -329,6 +341,7 @@ function TutorDashboard() {
                                                 ? 'Updating...'
                                                 : 'Cancel Session'}
                                         </button>
+
                                     </div>
                                 )}
                             </article>

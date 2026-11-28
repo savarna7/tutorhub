@@ -16,17 +16,32 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import AuthProvider from '../context/AuthProvider';
 import ProtectedRoute from './ProtectedRoute';
 
-import { getCurrentUser } from '../services/authService';
+import {
+    getCurrentUser,
+    refreshCsrfToken
+} from '../services/authService';
 
 // Mock authentication API calls.
 vi.mock('../services/authService', () => ({
     getCurrentUser: vi.fn(),
-    logoutUser: vi.fn()
+    logoutUser: vi.fn(),
+    refreshCsrfToken: vi.fn()
+}));
+
+vi.mock('../services/csrfService', () => ({
+    getCsrfToken: vi.fn(() => 'test-csrf-token'),
+    getCsrfHeaders: vi.fn(() => ({
+        'X-CSRF-Token': 'test-csrf-token'
+    }))
 }));
 
 beforeEach(() => {
     getCurrentUser.mockResolvedValue({
         user: null
+    });
+
+    refreshCsrfToken.mockResolvedValue({
+        success: true
     });
 });
 

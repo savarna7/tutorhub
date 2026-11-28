@@ -32,7 +32,10 @@ import {
 vi.mock('../services/authService', () => ({
     getCurrentUser: vi.fn(),
     loginUser: vi.fn(),
-    logoutUser: vi.fn()
+    logoutUser: vi.fn(),
+    refreshCsrfToken: vi.fn().mockResolvedValue({
+        success: true
+    }),
 }));
 
 beforeEach(() => {
